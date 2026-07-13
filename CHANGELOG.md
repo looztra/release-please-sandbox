@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.3.1](https://github.com/looztra/release-please-sandbox/compare/v0.3.0...v0.3.1) (2026-07-13)
+
+
+### Bug Fixes
+
+* **release:** unskip the staging deploy on ordinary pushes ([#14](https://github.com/looztra/release-please-sandbox/issues/14)) ([5247a08](https://github.com/looztra/release-please-sandbox/commit/5247a080982ea6547e342a8ee7b26fe991777bcb))
+
+
+### Documentation
+
+* **release:** add release-please study and release workflow proposal ([#5](https://github.com/looztra/release-please-sandbox/issues/5)) ([95146e3](https://github.com/looztra/release-please-sandbox/commit/95146e32266ae4d39f708b99579a42099c8ead12))
+* **release:** drop the fine-grained PAT recommendation ([#12](https://github.com/looztra/release-please-sandbox/issues/12)) ([ca9b7b7](https://github.com/looztra/release-please-sandbox/commit/ca9b7b745802cd9796c3a5e861a1fa58b86c07cf))
+
+
+### Continuous Integration
+
+* **deploy:** gate staging on release-please and add manual stg/prod deploy ([#13](https://github.com/looztra/release-please-sandbox/issues/13)) ([2800718](https://github.com/looztra/release-please-sandbox/commit/28007182fbeb7376ee9eb669ef5c0b37c7272f60))
+
 ## [0.3.0](https://github.com/looztra/release-please-sandbox/compare/v0.2.0...v0.3.0) (2026-07-13)
 
 
