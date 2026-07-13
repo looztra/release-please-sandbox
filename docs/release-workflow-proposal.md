@@ -95,16 +95,26 @@ Other revisions against the first draft:
   created (a release blocked on notes formatting would be worse); the body
   falls back to a link to the release PR and a warning is emitted.
 
-## Caveats (accepted)
+## Caveats and how to close them
 
 - **Bump files out of sync with the tag**: the tagged tree carries the
   *previous* `version.txt` and `CHANGELOG.md` (the bump commit is the tag's
   child, not its ancestor). Accepted by design: the version is carried by the
   Docker tag applied by the retag workflow, not by the file content.
+
+  How to contain it: treat "never derive the running version from the files
+  of a tagged checkout" as a rule. Consumers should read the version from the
+  tag name (the retag workflow already does), or the retag workflow can stamp
+  it on the image as an OCI annotation (`org.opencontainers.image.version`)
+  without altering the digest-identical layers.
 - **Extra commit in the next release range**: on the next run, release-please
   walks commits since the tag's SHA, so the `chore(main): release X.Y.Z` merge
   commit falls inside the range. It is a hidden `chore` and never bumps the
   version, so this is harmless.
+
+  How to keep it harmless: keep `chore` hidden in the `changelog-sections` of
+  [release-please-config.json](../release-please-config.json) (it is), so the
+  release merge commits never surface in future changelogs.
 - **The release merge commit also deploys to staging**: **resolved**. This
   was originally accepted as noise (one extra staging image whose only delta
   is the bump files). It is no longer the case: the staging deployment
@@ -125,4 +135,58 @@ Other revisions against the first draft:
 - **Inherent race (present in stock release-please too)**: if a feature commit
   lands on `main` between the release PR's last update and its merge, that
   commit is part of the tagged and deployed code but absent from the
-  changelog. Branch protection or merging promptly after approval avoids it.
+  changelog.
+
+  How to close it — release-please alone cannot, the guarantee must come from
+  GitHub:
+
+  1. **Branch protection on `main`** (classic rule or ruleset) with *Require
+     status checks to pass* and *Require branches to be up to date before
+     merging* (strict mode), with at least one required check (e.g. the
+     `Pre-commit` job of the code-checks workflow). Merging a release PR
+     whose branch is behind `main` is then blocked by GitHub until
+     release-please has refreshed it.
+  2. **Keep `always-update: true`** in
+     [release-please-config.json](../release-please-config.json) (already
+     set). Per the official manifest-releaser documentation, it will "always
+     update existing pull requests when changes are added, instead of only
+     when the release notes change [...] useful if pull requests must not be
+     out-of-date with the base branch". Without it, a hidden-type commit
+     (`chore`, `test`, `build`) does not change the release notes, so
+     release-please would never refresh the release PR branch — and the
+     strict protection above would deadlock the release PR.
+
+  Two properties of this pair are worth spelling out. `always-update` alone
+  does **not** close the race: release-please runs asynchronously after each
+  push, so a stale-but-refreshable PR can still be merged during that window.
+  Conversely, strict protection alone deadlocks on hidden-type commits. The
+  protection provides the guarantee; `always-update` keeps the release PR
+  mergeable under it.
+
+  Trade-off: the strict up-to-date requirement applies to every PR of the
+  repository, so feature PRs also need refreshing after each merge to `main`.
+  A merge queue automates that re-validation at scale, but its interaction
+  with release-please (queue-created merge commits, detection by
+  `merge_commit_sha`) should be validated in this sandbox before adoption.
+
+  Residual, by design: hidden commit types are part of the tagged and
+  deployed code but never appear in the changelog — that is intentional
+  changelog policy, not the race.
+
+## Hardening recommendations
+
+Not caveats, but settings that protect the guarantees this workflow relies
+on:
+
+- **Protect the release tags**: add a tag ruleset for `v*` forbidding update
+  and deletion. The whole prod retag chain assumes that a tag, once created,
+  never moves; the workflow creates it exactly once, and a ruleset extends
+  that guarantee against humans.
+- **Scope the PAT**: `RELEASE_PLEASE_TOKEN` should be a fine-grained PAT
+  restricted to this repository, with `contents: write` (tags, releases) and
+  `pull-requests: write` (release PR, labels) only. It both creates the tag
+  that triggers the prod retag and is the identity whose events retrigger
+  workflows — the smaller its blast radius, the better.
+- **Make the required checks meaningful**: the *up to date* strict mode only
+  bites if at least one status check is required; requiring `Pre-commit`
+  (code-checks) and the workflows sanity checks is the natural minimal set.
