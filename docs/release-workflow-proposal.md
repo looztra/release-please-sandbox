@@ -182,11 +182,19 @@ on:
   and deletion. The whole prod retag chain assumes that a tag, once created,
   never moves; the workflow creates it exactly once, and a ruleset extends
   that guarantee against humans.
-- **Scope the PAT**: `RELEASE_PLEASE_TOKEN` should be a fine-grained PAT
-  restricted to this repository, with `contents: write` (tags, releases) and
-  `pull-requests: write` (release PR, labels) only. It both creates the tag
-  that triggers the prod retag and is the identity whose events retrigger
-  workflows — the smaller its blast radius, the better.
+- **Scope the PAT**: `RELEASE_PLEASE_TOKEN` both creates the tag that
+  triggers the prod retag and is the identity whose events retrigger
+  workflows — the smaller its blast radius, the better. A fine-grained PAT
+  restricted to this repository would be ideal, but is **not an option
+  here**: a fine-grained PAT's resource owner can only be the token owner's
+  own account or an organization, so an outside collaborator cannot create
+  one scoped to a repository owned by another personal account — the
+  resulting token lacks the needed permissions and release-please fails to
+  create the release PR. In this setup the working option is a **classic PAT
+  with `repo` scope**, accepting that its blast radius spans every repository
+  the collaborator can write to. Narrow scoping becomes possible again if the
+  repository owner creates the fine-grained PAT themselves, or if the
+  repository moves under an organization.
 - **Make the required checks meaningful**: the *up to date* strict mode only
   bites if at least one status check is required; requiring `Pre-commit`
   (code-checks) and the workflows sanity checks is the natural minimal set.
