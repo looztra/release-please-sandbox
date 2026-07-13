@@ -4,13 +4,24 @@ repos:
     rev: v6.0.0
     hooks:
       - id: trailing-whitespace # Trims trailing whitespace
-      - id: end-of-file-fixer # Ensures files end with a newline
       - id: check-yaml # Validates YAML files
         args: [--allow-multiple-documents]
+      - id: end-of-file-fixer # Ensures files end with a newline
+      - id: check-toml # Validates TOML files
       - id: check-json # Validates JSON files
-      - id: check-merge-conflict # Checks for merge conflict strings
+      - id: check-xml # Validates XML files
+      - id: check-case-conflict # Checks for files that would conflict in case-insensitive filesystems
+      - id: check-merge-conflict # Checks for files that contain merge conflict strings
       - id: check-added-large-files # Checks for large files added to the repo
+      - id: check-executables-have-shebangs # Checks that executables have shebangs
       - id: detect-private-key # Checks for the existence of private keys
+      - id: mixed-line-ending # Enforce LF line endings in text files
+        args: [--fix=lf]
+
+  - repo: https://gitlab.com/bmares/check-json5
+    rev: v1.0.1
+    hooks:
+      - id: check-json5
 
   - repo: https://github.com/DavidAnson/markdownlint-cli2
     rev: v0.23.0
