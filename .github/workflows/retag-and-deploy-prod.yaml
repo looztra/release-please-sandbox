@@ -1,0 +1,62 @@
+---
+name: Retag and deploy to prod
+on:
+  push:
+    tags:
+      - v*
+
+permissions:
+  contents: read
+
+jobs:
+  retag:
+    name: Fake retag of the staging image
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # Note: github.sha is the tagged commit for lightweight tags (which is
+      # what the GitHub "create release" API produces). Annotated tags pushed
+      # manually would need dereferencing.
+      - name: Report tag and commit association
+        env:
+          TAG_NAME: ${{ github.ref_name }}
+          COMMIT_SHA: ${{ github.sha }}
+          FAKE_IMAGE: ghcr.io/${{ github.repository }}
+        run: |
+          {
+            echo "## 🏷️ Fake retag"
+            echo ""
+            echo "| What | Value |"
+            echo "| ---- | ----- |"
+            echo "| Tag | \`${TAG_NAME}\` |"
+            echo "| Associated commit | \`${COMMIT_SHA}\` |"
+            echo "| Fake retag | \`${FAKE_IMAGE}:sha-${COMMIT_SHA}\` → \`${FAKE_IMAGE}:${TAG_NAME}\` |"
+            echo ""
+            echo "> This simulates retagging the exact image that was deployed"
+            echo "> to staging for this commit with the release version."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  deploy-prod:
+    name: Fake deploy to prod
+    needs: retag
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: prod
+    steps:
+      - name: Report deployed commit and tag
+        env:
+          TAG_NAME: ${{ github.ref_name }}
+          COMMIT_SHA: ${{ github.sha }}
+          FAKE_IMAGE: ghcr.io/${{ github.repository }}
+        run: |
+          {
+            echo "## 🚀 Fake deployment to \`prod\`"
+            echo ""
+            echo "| What | Value |"
+            echo "| ---- | ----- |"
+            echo "| Tag | \`${TAG_NAME}\` |"
+            echo "| Commit | \`${COMMIT_SHA}\` |"
+            echo "| Fake image deployed | \`${FAKE_IMAGE}:${TAG_NAME}\` |"
+            echo ""
+            echo "> Same image digest as staging: only the Docker tag differs."
+          } >> "$GITHUB_STEP_SUMMARY"
