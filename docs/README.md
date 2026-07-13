@@ -15,4 +15,8 @@ with the commit that was deployed to staging.
 - [Staging deploy gating](staging-deploy-gating.md): options to deploy to
   staging only when release-please would have created (or updated) a release
   PR, the race conditions of each option, and why gating on the
-  release-please action outputs is selected.
+  release-please action outputs is selected (and now implemented).
+- [Manual deploy](manual-deploy.md): the `workflow_dispatch`-only workflow
+  deploying a given tag to `stg` or `prod`, and the corner cases of dynamic
+  GitHub environment selection (auto-created environments, deployment branch
+  policies, deployment records).

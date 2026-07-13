@@ -1,8 +1,16 @@
 # Gating the staging deployment on releasable changes
 
-Status: **studied, not implemented**. Today
-[deploy-stg.yaml](../.github/workflows/deploy-stg.yaml) deploys every push to
-`main` to staging, except the release PR merge commit (gated by the
+Status: **implemented** in
+[release-please.yaml](../.github/workflows/release-please.yaml) (workflow
+"Manage releases and deploy to staging"): the `deploy-stg` job is gated on
+the `prs_created` output of the release-please action (option 1 below). The
+previously separate staging workflow survives as
+[deploy-manual.yaml](../.github/workflows/deploy-manual.yaml), a
+`workflow_dispatch`-only workflow to deploy a given tag to `stg` or `prod` —
+see [manual deploy](manual-deploy.md).
+
+Before this change, the staging workflow deployed every push to `main`,
+except the release PR merge commit (gated by the
 [detect-release-please-merge](../.github/actions/detect-release-please-merge/action.yaml)
 composite action).
 
@@ -53,8 +61,8 @@ Move the `deploy-stg` job (with its `environment: stg` protection) into
 
 ```yaml
 deploy-stg:
-  needs: [detect, release-pr]
-  if: needs.release-pr.outputs.prs_created == 'true'
+  needs: release-pr
+  if: needs.release-pr.outputs.prs-created == 'true'
   environment: stg
 ```
 
@@ -88,9 +96,9 @@ Properties:
   legitimate push does not reach staging", never "an unreleased commit
   ships"; re-running the workflow recovers.
 - Cost: the staging deploy is serialized behind the release-please job and
-  its concurrency group (some added latency), and `deploy-stg.yaml` loses
-  its standalone `workflow_dispatch` trigger unless one is re-added on the
-  merged workflow.
+  its concurrency group (some added latency), and the standalone staging
+  workflow loses its push trigger. Its `workflow_dispatch` trigger is kept
+  by repurposing it into the [manual deploy](manual-deploy.md) workflow.
 
 ### Option 2: same signal, separate workflows (`workflow_run` + artifact)
 

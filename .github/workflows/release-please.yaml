@@ -13,7 +13,7 @@ concurrency:
   group: manage-releases
   cancel-in-progress: false
 
-name: Manage releases
+name: Manage releases and deploy to staging
 
 jobs:
   detect:
@@ -159,10 +159,45 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
+    outputs:
+      prs-created: ${{ steps.release-please.outputs.prs_created }}
     steps:
-      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+      - id: release-please
+        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         with:
           token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
           skip-github-release: true
+
+  deploy-stg:
+    name: Fake deploy to stg
+    needs: release-pr
+    # Deploy iff release-please created or updated a release PR for this
+    # push: staging then always matches what the next release will ship.
+    # On the release PR merge push, no PR is created (the only new commit
+    # since the tag is the hidden release merge commit), so this also skips
+    # the bump commit — its code was already deployed by the previous push.
+    # See docs/staging-deploy-gating.md.
+    if: needs.release-pr.outputs.prs-created == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    environment: stg
+    steps:
+      - name: Checkout current branch
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Fake deploy to stg
+        uses: ./.github/actions/fake-deploy
+        with:
+          environment: stg
+          image-tag: sha-${{ github.sha }}
+          commit-sha: ${{ github.sha }}
+          commit-message: ${{ github.event.head_commit.message }}
+          note: |-
+            No real artifact is built in this sandbox: this simulates
+            deploying the image built for this exact commit to staging.
