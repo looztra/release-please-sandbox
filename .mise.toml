@@ -1,0 +1,14 @@
+[tools]
+actionlint = "1.7"
+"pipx:pre-commit" = { version = "4.6.0", uvx_args = "--with pre-commit-uv" }
+uv = "0.11.28"
+zizmor = "1.26"
+
+[settings]
+idiomatic_version_file_enable_tools = [
+]
+
+[task_config]
+includes = [
+    "toolbox/mise/tasks/toml/*.toml",
+]

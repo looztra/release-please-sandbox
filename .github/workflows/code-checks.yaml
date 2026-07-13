@@ -1,0 +1,40 @@
+---
+name: Code checks
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+    types: [opened, synchronize, reopened, ready_for_review]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.ref }}-${{ github.workflow }}-checks
+  cancel-in-progress: true
+
+jobs:
+  pre-commit:
+    name: Pre-commit
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout current branch
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: jdx/mise-action@v4
+        with:
+          install: true
+          cache: ${{ vars.MISE_CACHE_ENABLED || 'true' }}
+          cache_key_prefix: ${{ vars.MISE_CACHE_KEY_PREFIX || 'mise-v0' }}
+          version: ${{ vars.MISE_VERSION }}
+
+      - name: Run pre-commit checks
+        run: |
+          echo "::group::Run pre-commit checks"
+          mise run precommit:run
+          echo "::endgroup::"
