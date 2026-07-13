@@ -5,18 +5,164 @@ on:
       - main
 
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
+
+# Serialize runs: the publish-release job must create the tag before the
+# release-pr job evaluates "commits since last release" on a later push.
+concurrency:
+  group: manage-releases
+  cancel-in-progress: false
 
 name: Manage releases
 
 jobs:
-  release-please:
-    name: Release Please
+  detect:
+    name: Detect release-please merge commit
     runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      is-release-please-merge: ${{ steps.detect.outputs.is-release-please-merge }}
+      pr-number: ${{ steps.detect.outputs.pr-number }}
+    steps:
+      - name: Checkout current branch
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Detect release-please merge commit
+        id: detect
+        uses: ./.github/actions/detect-release-please-merge
+
+  publish-release:
+    name: Publish release at staging commit
+    needs: detect
+    if: needs.detect.outputs.is-release-please-merge == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      # The PAT (not GITHUB_TOKEN) is required so that the created tag
+      # triggers the retag-and-deploy-prod workflow.
+      - name: Create tag and release at the staging-deployed commit
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          PR_NUMBER: ${{ needs.detect.outputs.pr-number }}
+        with:
+          github-token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+          script: |
+            const prNumber = Number.parseInt(process.env.PR_NUMBER, 10);
+            const { data: pr } = await github.rest.pulls.get({
+              ...context.repo, pull_number: prNumber });
+
+            const getFile = async (path) => {
+              const { data } = await github.rest.repos.getContent({
+                ...context.repo, path, ref: context.sha });
+              return Buffer.from(data.content, 'base64').toString('utf8');
+            };
+
+            // Version: the manifest is the authoritative, structured source
+            const manifest = JSON.parse(await getFile('.release-please-manifest.json'));
+            const version = manifest['.'];
+            const tagName = `v${version}`;
+
+            // Idempotency: a re-run must not fail on an existing tag
+            let tagExists = false;
+            try {
+              await github.rest.git.getRef({ ...context.repo, ref: `tags/${tagName}` });
+              tagExists = true;
+            } catch (error) {
+              if (error.status !== 404) throw error;
+            }
+
+            // Target: first parent of the merge commit = the commit whose
+            // image was built and deployed to staging by the previous push
+            const { data: mergeCommit } = await github.rest.git.getCommit({
+              ...context.repo, commit_sha: context.sha });
+            const targetSha = mergeCommit.parents[0].sha;
+
+            let releaseUrl = '';
+            if (tagExists) {
+              core.info(`Tag ${tagName} already exists, skipping release creation`);
+            } else {
+              // Release notes: the CHANGELOG.md section release-please wrote
+              // for this version (version headings start with a semver; entry
+              // subheadings like "### Features" do not). The version must be
+              // anchored at the heading start: compare URLs in other headings
+              // also contain version strings.
+              const versionHeading = /^#{2,3} \[?\d+\.\d+\.\d+/;
+              const escaped = version.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+              const thisVersionHeading = new RegExp(`^#{2,3} \\[?${escaped}[^.\\d]`);
+              const lines = (await getFile('CHANGELOG.md')).split('\n');
+              const start = lines.findIndex((line) => thisVersionHeading.test(line));
+              let notes;
+              if (start === -1) {
+                core.warning(`No CHANGELOG.md section found for version ${version}`);
+                notes = `See release PR ${pr.html_url}.`;
+              } else {
+                let end = lines.length;
+                for (let i = start + 1; i < lines.length; i += 1) {
+                  if (versionHeading.test(lines[i])) {
+                    end = i;
+                    break;
+                  }
+                }
+                notes = lines.slice(start, end).join('\n').trim();
+              }
+              const { data: release } = await github.rest.repos.createRelease({
+                ...context.repo,
+                tag_name: tagName,
+                target_commitish: targetSha,
+                name: tagName,
+                body: notes,
+              });
+              releaseUrl = release.html_url;
+              core.info(`Created release ${tagName} at ${targetSha}`);
+            }
+
+            // Label bookkeeping, idempotent: mimic release-please
+            try {
+              await github.rest.issues.removeLabel({
+                ...context.repo, issue_number: prNumber, name: 'autorelease: pending' });
+            } catch (error) {
+              if (error.status !== 404) throw error;
+            }
+            await github.rest.issues.addLabels({
+              ...context.repo, issue_number: prNumber, labels: ['autorelease: tagged'] });
+
+            core.summary.addHeading('Release published', 2);
+            core.summary.addRaw([
+              `- Version: \`${version}\``,
+              `- Tag: \`${tagName}\`${tagExists ? ' (already existed, creation skipped)' : ''}`,
+              `- Target commit (staging-deployed): \`${targetSha}\``,
+              `- Release PR: <a href="${pr.html_url}">#${prNumber}</a>`,
+              releaseUrl ? `- Release: ${releaseUrl}` : '',
+            ].filter(Boolean).join('\n'));
+            await core.summary.write();
+
+  release-pr:
+    name: Release Please PR
+    needs:
+      - detect
+      - publish-release
+    # Run on ordinary pushes too (publish-release is then skipped), but
+    # never when detection failed (fail closed) or publishing failed
+    if: >-
+      !cancelled() &&
+      needs.detect.result == 'success' &&
+      needs.publish-release.result != 'failure'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
     steps:
       - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         with:
           token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
+          skip-github-release: true
