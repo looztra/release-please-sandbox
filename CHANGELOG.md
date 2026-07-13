@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.0](https://github.com/looztra/release-please-sandbox/compare/v0.1.0...v0.2.0) (2026-07-13)
+
+
+### Features
+
+* **ci:** simulate stg/prod deployments and release-please detection ([#6](https://github.com/looztra/release-please-sandbox/issues/6)) ([54c8328](https://github.com/looztra/release-please-sandbox/commit/54c8328ab9331527ae9eaae70b4d841f0429ad0a))
+
 ## 0.1.0 (2026-07-13)
 
 
