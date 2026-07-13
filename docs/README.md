@@ -12,3 +12,7 @@ with the commit that was deployed to staging.
 - [Release workflow](release-workflow-proposal.md): the implemented CI
   design, the revisions coming from its adversarial review, the failure
   modes, and the caveats we accept.
+- [Staging deploy gating](staging-deploy-gating.md): options to deploy to
+  staging only when release-please would have created (or updated) a release
+  PR, the race conditions of each option, and why gating on the
+  release-please action outputs is selected.
