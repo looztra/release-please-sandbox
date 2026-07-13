@@ -1,0 +1,40 @@
+---
+name: Deploy to staging
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.ref }}-${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  deploy-stg:
+    name: Fake deploy to stg
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: stg
+    steps:
+      - name: Report deployed commit
+        env:
+          COMMIT_SHA: ${{ github.sha }}
+          COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+          FAKE_IMAGE: ghcr.io/${{ github.repository }}
+        run: |
+          {
+            echo "## 🚀 Fake deployment to \`stg\`"
+            echo ""
+            echo "| What | Value |"
+            echo "| ---- | ----- |"
+            echo "| Triggering commit | \`${COMMIT_SHA}\` |"
+            echo "| Commit message | ${COMMIT_MESSAGE%%$'\n'*} |"
+            echo "| Fake image deployed | \`${FAKE_IMAGE}:sha-${COMMIT_SHA}\` |"
+            echo ""
+            echo "> No real artifact is built in this sandbox: this simulates"
+            echo "> deploying the image built for this exact commit to staging."
+          } >> "$GITHUB_STEP_SUMMARY"
