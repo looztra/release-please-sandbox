@@ -142,9 +142,23 @@ jobs:
   walks commits since the tag's SHA, so the `chore(main): release X.Y.Z` merge
   commit falls inside the range. It is a hidden `chore` and never bumps the
   version, so this is harmless.
-- **The release merge commit also deploys to staging**: it is a push to
-  `main`, so it produces one more staging image whose only delta is the bump
-  files. Production retags the *parent* image; the extra image is just noise.
+- **The release merge commit also deploys to staging**: **resolved**. This
+  was originally accepted as noise (one extra staging image whose only delta
+  is the bump files). It is no longer the case: the staging deployment
+  workflow now gates on release-please detection. A `check-release-please`
+  job runs the local composite action
+  [detect-release-please-merge](../.github/actions/detect-release-please-merge/action.yaml)
+  (shared with the code-checks workflow), and the `deploy-stg` job is skipped
+  when the pushed commit is the merge commit of a merged release-please PR.
+  No staging image is built or deployed for the bump commit, and nothing
+  needs one: the release tag points to the merge commit's *parent*, whose
+  image was built and deployed by the previous push.
+
+  Remaining nuance, accepted: **the gate fails closed**. If the detection job
+  itself fails (e.g. a transient GitHub API error), `deploy-stg` is skipped
+  because its `needs` dependency failed. The failure mode is therefore "a
+  legitimate feature push does not reach staging", never "a release commit
+  does"; re-running the workflow recovers.
 - **Inherent race (present in stock release-please too)**: if a feature commit
   lands on `main` between the release PR's last update and its merge, that
   commit is part of the tagged and deployed code but absent from the
