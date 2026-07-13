@@ -28,3 +28,30 @@ repos:
     hooks:
       - id: markdownlint-cli2
         pass_filenames: false
+
+  - repo: https://github.com/jumanjihouse/pre-commit-hooks
+    rev: 3.0.0
+    hooks:
+      - id: shellcheck # Shell scripts conform to shellcheck
+      - id: shfmt # Check shell style with shfmt
+
+  - repo: https://github.com/adrienverge/yamllint.git
+    rev: v1.38.0
+    hooks:
+      - id: yamllint
+        args: [--config-data, relaxed, --no-warnings]
+
+  - repo: https://github.com/looztra/yamkix
+    rev: v1.1.0
+    hooks:
+      - id: yamkix
+        args: [--no-quotes-preserved, --silent]
+
+  - repo: local
+    hooks:
+      - id: taplo
+        name: Check TOML files are formatted with 'taplo'
+        entry: taplo format --config .taplo.toml
+        types: [text]
+        language: system
+        pass_filenames: false
