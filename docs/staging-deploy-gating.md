@@ -62,9 +62,17 @@ Move the `deploy-stg` job (with its `environment: stg` protection) into
 ```yaml
 deploy-stg:
   needs: release-pr
-  if: needs.release-pr.outputs.prs-created == 'true'
+  if: >-
+    !cancelled() &&
+    needs.release-pr.result == 'success' &&
+    needs.release-pr.outputs.prs-created == 'true'
   environment: stg
 ```
+
+The `!cancelled()` guard and the explicit result check are **load-bearing**;
+see [the pitfall](#pitfall-a-skipped-job-poisons-the-whole-needs-chain)
+below for why the naive `if: needs.release-pr.outputs.prs-created == 'true'`
+silently never deploys.
 
 The `prs_created` output of `googleapis/release-please-action` is `true`
 when the action created **or updated** a release PR: exactly the PR-exists
@@ -91,14 +99,44 @@ Properties:
 - **No race**: the deploy decision is the decision of the very run that
   created or updated the PR, frozen in its output; the `manage-releases`
   concurrency group already serializes runs.
-- **Fails closed**: if `detect` or `release-pr` fails, the deploy is
-  skipped. Same philosophy as the existing gate: the failure mode is "a
-  legitimate push does not reach staging", never "an unreleased commit
-  ships"; re-running the workflow recovers.
+- **Fails closed**: if `detect` or `publish-release` fails, `release-pr` is
+  skipped, its `result` is not `success`, and the deploy is skipped. Same
+  philosophy as the existing gate: the failure mode is "a legitimate push
+  does not reach staging", never "an unreleased commit ships"; re-running
+  the workflow recovers.
 - Cost: the staging deploy is serialized behind the release-please job and
   its concurrency group (some added latency), and the standalone staging
   workflow loses its push trigger. Its `workflow_dispatch` trigger is kept
   by repurposing it into the [manual deploy](manual-deploy.md) workflow.
+
+#### Pitfall: a skipped job poisons the whole needs chain
+
+The first implementation used the naive gate
+`if: needs.release-pr.outputs.prs-created == 'true'` — and `deploy-stg` was
+skipped on **every** push, even when release-please had just updated the
+release PR and the output was `'true'`.
+
+Cause: on an ordinary push, `publish-release` is skipped (it only runs on
+release merge commits). GitHub Actions propagates a skip through the entire
+`needs` chain, **through succeeding jobs included**: a downstream job only
+escapes the cascade if its own `if` contains a status-check function
+(`always()`, `!cancelled()`, ...). `release-pr` escapes it with its
+`!cancelled()` guard and runs — but `deploy-stg` with a plain `if` gets an
+implicit `success()` prepended, and `success()` is false when any job
+upstream in the chain was skipped, even though the direct dependency
+`release-pr` succeeded. The output comparison is never reached.
+
+Ironically, the only pushes where the naive gate's `success()` would have
+been true are the release merge pushes (`publish-release` runs there) —
+exactly where `prs-created` is false. The naive gate can never deploy.
+
+Fix: the `if` shown above. `!cancelled()` disables the implicit `success()`
+and stops the cascade; `needs.release-pr.result == 'success'` restores the
+fail-closed behavior explicitly (a plain `always()` without the result
+check would deploy even after a failed `release-pr`). Known GitHub Actions
+behavior, not specific to this repository:
+[actions/runner#2205](https://github.com/actions/runner/issues/2205),
+[community discussion #45058](https://github.com/orgs/community/discussions/45058).
 
 ### Option 2: same signal, separate workflows (`workflow_run` + artifact)
 

@@ -179,7 +179,16 @@ jobs:
     # since the tag is the hidden release merge commit), so this also skips
     # the bump commit — its code was already deployed by the previous push.
     # See docs/staging-deploy-gating.md.
-    if: needs.release-pr.outputs.prs-created == 'true'
+    #
+    # The !cancelled() guard is load-bearing: on ordinary pushes,
+    # publish-release is skipped, and a skip propagates through the whole
+    # needs chain — the implicit success() of a plain `if` is false even
+    # though release-pr succeeded (actions/runner#2205). The explicit
+    # result check keeps the gate fail-closed.
+    if: >-
+      !cancelled() &&
+      needs.release-pr.result == 'success' &&
+      needs.release-pr.outputs.prs-created == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
