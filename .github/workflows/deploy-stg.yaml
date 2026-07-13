@@ -14,8 +14,31 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  check-release-please:
+    name: Check for release-please merge commit
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      is-release-please-merge: ${{ steps.detect.outputs.is-release-please-merge }}
+    steps:
+      - name: Checkout current branch
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Detect release-please merge commit
+        id: detect
+        uses: ./.github/actions/detect-release-please-merge
+
   deploy-stg:
     name: Fake deploy to stg
+    needs: check-release-please
+    # A release-please merge commit only bumps changelog/version files: the
+    # code it carries was already deployed to stg by the previous push.
+    if: needs.check-release-please.outputs.is-release-please-merge != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     environment: stg

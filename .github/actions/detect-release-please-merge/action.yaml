@@ -1,0 +1,49 @@
+---
+name: Detect release-please merge commit
+description: >-
+  Detects whether the current commit is the merge commit of a merged
+  release-please PR, reports the result to the step summary, and exposes it
+  as an output. Requires the repository to be checked out (local action) and
+  the calling job to have the pull-requests read permission.
+
+outputs:
+  is-release-please-merge:
+    description: >-
+      'true' if the current commit is the merge commit of a release-please
+      PR, 'false' otherwise.
+    value: ${{ steps.detect.outputs.is-release-please-merge }}
+  pr-number:
+    description: The release-please PR number, when detected (empty otherwise).
+    value: ${{ steps.detect.outputs.pr-number }}
+
+runs:
+  using: composite
+  steps:
+    - name: Detect release-please merge commit
+      id: detect
+      uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+      with:
+        script: |
+          const { data: prs } = await github.rest.repos.listPullRequestsAssociatedWithCommit({
+            ...context.repo,
+            commit_sha: context.sha,
+          });
+          const releasePr = prs.find((pr) =>
+            pr.merged_at !== null &&
+            pr.merge_commit_sha === context.sha &&
+            pr.head.ref === 'release-please--branches--main');
+          core.summary.addHeading('Release-please detection', 2);
+          if (releasePr) {
+            core.summary.addRaw(
+              `Commit \`${context.sha}\` is the merge commit of release-please PR ` +
+              `<a href="${releasePr.html_url}">#${releasePr.number}</a> ` +
+              `(<code>${releasePr.title}</code>).`);
+            core.info(`Release-please merge commit detected (PR #${releasePr.number})`);
+          } else {
+            core.summary.addRaw(
+              `Commit \`${context.sha}\` is not associated with a merged release-please PR.`);
+            core.info('Not a release-please merge commit');
+          }
+          await core.summary.write();
+          core.setOutput('is-release-please-merge', releasePr ? 'true' : 'false');
+          core.setOutput('pr-number', releasePr ? String(releasePr.number) : '');

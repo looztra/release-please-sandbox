@@ -27,37 +27,14 @@ jobs:
       pull-requests: read
 
     steps:
-      - name: Detect release-please merge commit
-        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
-        with:
-          script: |
-            const { data: prs } = await github.rest.repos.listPullRequestsAssociatedWithCommit({
-              ...context.repo,
-              commit_sha: context.sha,
-            });
-            const releasePr = prs.find((pr) =>
-              pr.merged_at !== null &&
-              pr.merge_commit_sha === context.sha &&
-              pr.head.ref === 'release-please--branches--main');
-            core.summary.addHeading('Release-please detection', 2);
-            if (releasePr) {
-              core.summary.addRaw(
-                `Commit \`${context.sha}\` is the merge commit of release-please PR ` +
-                `<a href="${releasePr.html_url}">#${releasePr.number}</a> ` +
-                `(<code>${releasePr.title}</code>).`);
-              core.info(`Release-please merge commit detected (PR #${releasePr.number})`);
-            } else {
-              core.summary.addRaw(
-                `Commit \`${context.sha}\` is not associated with a merged release-please PR.`);
-              core.info('Not a release-please merge commit');
-            }
-            await core.summary.write();
-
       - name: Checkout current branch
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           fetch-depth: 0
           persist-credentials: false
+
+      - name: Detect release-please merge commit
+        uses: ./.github/actions/detect-release-please-merge
 
       - uses: jdx/mise-action@e6a8b3978addb5a52f2b4cd9d91eafa7f0ab959d # v4.2.0
         with:
