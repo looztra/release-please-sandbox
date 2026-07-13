@@ -1,0 +1,79 @@
+---
+name: Manual deploy
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Target environment
+        required: true
+        type: choice
+        # A choice input (not free text) is load-bearing: an unknown
+        # environment name would be silently auto-created by GitHub with no
+        # protection rules, and the deploy would run unguarded.
+        options:
+          - stg
+          - prod
+      tag:
+        description: Release tag to deploy (e.g. v0.3.0)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-${{ inputs.environment }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Fake deploy ${{ inputs.tag }} to ${{ inputs.environment }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # The environment's protection rules (e.g. required reviewers) apply to
+    # the resolved name. Note: deployment branch policies, if configured on
+    # the environment, evaluate the ref this run was dispatched on (usually
+    # main), not the tag input. See docs/manual-deploy.md.
+    environment: ${{ inputs.environment }}
+    steps:
+      # Checkout of the run's ref (not the tag): the fake-deploy local
+      # action must exist in the workspace, and older tags predate it.
+      - name: Checkout current branch
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Resolve tag to commit and image tag
+        id: resolve
+        env:
+          TAG: ${{ inputs.tag }}
+          ENVIRONMENT: ${{ inputs.environment }}
+        run: |
+          if ! git fetch --no-tags origin "refs/tags/${TAG}:refs/tags/${TAG}"; then
+            echo "::error::Tag '${TAG}' not found in the repository"
+            exit 1
+          fi
+          # ^{commit} dereferences annotated tags to the tagged commit
+          commit_sha=$(git rev-parse "${TAG}^{commit}")
+          # Staging images are keyed by commit SHA; the release tag is only
+          # applied to the image by the prod retag workflow.
+          if [[ "${ENVIRONMENT}" == "stg" ]]; then
+            image_tag="sha-${commit_sha}"
+          else
+            image_tag="${TAG}"
+          fi
+          {
+            echo "commit-sha=${commit_sha}"
+            echo "image-tag=${image_tag}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Fake deploy
+        uses: ./.github/actions/fake-deploy
+        with:
+          environment: ${{ inputs.environment }}
+          image-tag: ${{ steps.resolve.outputs.image-tag }}
+          commit-sha: ${{ steps.resolve.outputs.commit-sha }}
+          note: |-
+            Manual deployment of tag `${{ inputs.tag }}`. No real artifact
+            is built in this sandbox: this simulates deploying the image
+            associated with this tag.

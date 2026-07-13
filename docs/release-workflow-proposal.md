@@ -11,11 +11,11 @@ tag and the GitHub release at the commit that was deployed to staging.
 
 ## Overview
 
-A single workflow triggered by `push` on `main`, with three serialized jobs:
+A single workflow triggered by `push` on `main`, with four serialized jobs:
 
 1. **`detect`**: runs the local composite action
    [detect-release-please-merge](../.github/actions/detect-release-please-merge/action.yaml)
-   (shared with the code-checks and deploy-stg workflows) and exposes
+   (shared with the code-checks workflow) and exposes
    `is-release-please-merge` and `pr-number` outputs.
 2. **`publish-release`** (only when the pushed commit is a release PR merge
    commit): a single `actions/github-script` step that creates the tag and
@@ -24,6 +24,10 @@ A single workflow triggered by `push` on `main`, with three serialized jobs:
 3. **`release-pr`**: the release-please action with
    `skip-github-release: true`, so it only creates and updates the release
    PR. It is gated to never run when detection or publishing failed.
+4. **`deploy-stg`**: the fake staging deployment, gated on the `prs_created`
+   output of the release-please action — it runs only when release-please
+   created or updated a release PR for the push (see
+   [staging deploy gating](staging-deploy-gating.md)).
 
 Key building blocks:
 
@@ -117,21 +121,22 @@ Other revisions against the first draft:
   release merge commits never surface in future changelogs.
 - **The release merge commit also deploys to staging**: **resolved**. This
   was originally accepted as noise (one extra staging image whose only delta
-  is the bump files). It is no longer the case: the staging deployment
-  workflow now gates on release-please detection. A `check-release-please`
-  job runs the local composite action
-  [detect-release-please-merge](../.github/actions/detect-release-please-merge/action.yaml)
-  (shared with the code-checks workflow), and the `deploy-stg` job is skipped
-  when the pushed commit is the merge commit of a merged release-please PR.
-  No staging image is built or deployed for the bump commit, and nothing
-  needs one: the release tag points to the merge commit's *parent*, whose
-  image was built and deployed by the previous push.
+  is the bump files). It is no longer the case: the staging deployment is
+  now a `deploy-stg` job of this same workflow, gated on the `prs_created`
+  output of the release-please action — staging deploys only when
+  release-please created or updated a release PR for the push (see
+  [staging deploy gating](staging-deploy-gating.md)). On the release merge
+  push, release-please creates no PR (the only new commit since the tag is
+  the hidden release merge commit), so no staging image is built or deployed
+  for the bump commit, and nothing needs one: the release tag points to the
+  merge commit's *parent*, whose image was built and deployed by a previous
+  push.
 
-  Remaining nuance, accepted: **the gate fails closed**. If the detection job
-  itself fails (e.g. a transient GitHub API error), `deploy-stg` is skipped
-  because its `needs` dependency failed. The failure mode is therefore "a
-  legitimate feature push does not reach staging", never "a release commit
-  does"; re-running the workflow recovers.
+  Remaining nuance, accepted: **the gate fails closed**. If the `detect` or
+  `release-pr` job fails (e.g. a transient GitHub API error), `deploy-stg`
+  is skipped because its `needs` chain failed. The failure mode is therefore
+  "a legitimate feature push does not reach staging", never "a release
+  commit does"; re-running the workflow recovers.
 - **Inherent race (present in stock release-please too)**: if a feature commit
   lands on `main` between the release PR's last update and its merge, that
   commit is part of the tagged and deployed code but absent from the
