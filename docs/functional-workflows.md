@@ -13,8 +13,10 @@ behind each gate shown below, and
 
 ```mermaid
 flowchart TD
+    EVT([Push to main])
+
     subgraph RP[release-please.yaml]
-        A[Push to main] --> B[detect job\naction: detect-release-please-merge]
+        B[detect job\naction: detect-release-please-merge]
         B -->|is-release-please-merge = false| C[publish-release: skipped]
         C --> D[release-pr job\ngoogleapis/release-please-action]
         D -->|no releasable commits\nno PR pending| E[prs_created = false]
@@ -28,15 +30,18 @@ flowchart TD
         H1 --> H2[docker push step: NOT skipped\npush-image input = true]
     end
 
-    A -.triggers in parallel.-> H
+    EVT --> B
+    EVT -.triggers in parallel.-> H
 ```
 
 ## 2. Candidate release (a `feat`/`fix`/etc. push creates or updates the release PR)
 
 ```mermaid
 flowchart TD
+    EVT([Push feat/fix/perf/... to main])
+
     subgraph RP[release-please.yaml]
-        A[Push feat/fix/perf/... to main] --> B[detect job\nis-release-please-merge = false]
+        B[detect job\nis-release-please-merge = false]
         B --> C[publish-release: skipped]
         C --> D[release-pr job\ngoogleapis/release-please-action]
         D --> E{Releasable commits\nsince last tag?}
@@ -54,16 +59,18 @@ flowchart TD
         L1 --> L2[docker push step: NOT skipped\npush-image input = true]
     end
 
-    A -.triggers in parallel.-> L
+    EVT --> B
+    EVT -.triggers in parallel.-> L
 ```
 
 ## 3. Release created (release PR merged → tag/release → prod)
 
 ```mermaid
 flowchart TD
+    EVT1([Merge release PR into main\n→ push: merge commit lands on main])
+
     subgraph RP[release-please.yaml]
-        A[Merge release PR into main] --> B[Push: merge commit lands on main]
-        B --> C[detect job\naction: detect-release-please-merge\nis-release-please-merge = true, pr-number]
+        C[detect job\naction: detect-release-please-merge\nis-release-please-merge = true, pr-number]
         C --> D[publish-release job]
         D --> D1[Read version from .release-please-manifest.json]
         D1 --> D2[Target = merge commit's first parent\nthe already-staged commit]
@@ -81,14 +88,18 @@ flowchart TD
         M1 --> M2[docker push step: skipped\npush-image input = false\nimage already built+pushed for the\nparent commit by the previous push]
     end
 
+    EVT2([Tag push v*])
+
     subgraph RD[retag-and-deploy-prod.yaml]
         I[retag job\ninline steps, no composite action]
         I --> J[deploy-prod job\naction: fake-deploy\nprod, image vX.Y.Z]
         J --> L([Prod runs the same artifact\nalready validated on staging])
     end
 
-    D3 -->|Tag push v* triggers| I
-    B -.triggers in parallel.-> M
+    EVT1 --> C
+    EVT1 -.triggers in parallel.-> M
+    D3 -->|creates the tag,\nwhich raises| EVT2
+    EVT2 --> I
 ```
 
 Also available: [manual deploy](manual-deploy.md)
