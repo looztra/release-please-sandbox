@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.4.0](https://github.com/looztra/release-please-sandbox/compare/v0.3.1...v0.4.0) (2026-07-15)
+
+
+### Features
+
+* **docker:** fake build app and build docker image ([#18](https://github.com/looztra/release-please-sandbox/issues/18)) ([3750ace](https://github.com/looztra/release-please-sandbox/commit/3750acef9e573ddcefd040e050a326fb7878d170))
+
+
+### Documentation
+
+* **docs:** add functional workflow diagrams ([#15](https://github.com/looztra/release-please-sandbox/issues/15)) ([b712de3](https://github.com/looztra/release-please-sandbox/commit/b712de376b2b0a54d69ae6b78b78d58115fe08be))
+
 ## [0.3.1](https://github.com/looztra/release-please-sandbox/compare/v0.3.0...v0.3.1) (2026-07-13)
 
 
