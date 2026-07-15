@@ -19,6 +19,9 @@ with the commit that was deployed to staging.
   staging only when release-please would have created (or updated) a release
   PR, the race conditions of each option, and why gating on the
   release-please action outputs is selected (and now implemented).
+- [Fake build and docker push gating](fake-build-push-gating.md): the
+  `code-checks` job that simulates building the app and its Docker image, and
+  why the fake docker push is skipped on the release-please merge commit.
 - [Manual deploy](manual-deploy.md): the `workflow_dispatch`-only workflow
   deploying a given tag to `stg` or `prod`, and the corner cases of dynamic
   GitHub environment selection (auto-created environments, deployment branch

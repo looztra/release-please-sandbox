@@ -5,7 +5,9 @@ an ordinary push, a push that becomes a release candidate, and the merge
 that turns a candidate into a published release. See
 [release-please default behavior](release-please-default-behavior.md) and
 [staging deploy gating](staging-deploy-gating.md) for the detailed reasoning
-behind each gate shown below.
+behind each gate shown below, and
+[fake build and docker push gating](fake-build-push-gating.md) for the
+`code-checks` build/push details.
 
 ## 1. Normal push (no releasable changes pending/created)
 
@@ -17,7 +19,9 @@ flowchart TD
     D -->|no releasable commits\nno PR pending| E[prs_created = false]
     E --> F[deploy-stg: skipped]
     F --> G([Staging unchanged])
-    D -.parallel.-> H[code-checks: pre-commit]
+    D -.parallel.-> H[code-checks: pre-commit\ndetects is-release-please-merge = false]
+    H --> H1[fake-build: app + docker build\nimage sha-<commit-sha>]
+    H1 --> H2[docker push: NOT skipped\nnot a release-please merge commit]
     D -.parallel.-> I[workflows-checks: actionlint + zizmor]
 ```
 
@@ -35,6 +39,9 @@ flowchart TD
     H --> I[fake-deploy stg\nimage sha-<commit-sha>]
     I --> J([Staging now matches\nwhat next release will ship])
     F -.awaits.-> K([Maintainer reviews/merges release PR])
+    A -.parallel.-> L[code-checks: pre-commit\ndetects is-release-please-merge = false]
+    L --> L1[fake-build: app + docker build\nimage sha-<commit-sha>]
+    L1 --> L2[docker push: NOT skipped\nnot a release-please merge commit]
 ```
 
 ## 3. Release created (release PR merged → tag/release → prod)
@@ -56,6 +63,9 @@ flowchart TD
     I --> J[retag: fake-retag sha-<commit> → vX.Y.Z]
     J --> K[deploy-prod: environment=prod\nfake-deploy image vX.Y.Z]
     K --> L([Prod runs the same artifact\nalready validated on staging])
+    B -.parallel.-> M[code-checks: pre-commit\ndetects is-release-please-merge = true]
+    M --> M1[fake-build: app + docker build\nimage sha-<merge-commit-sha>]
+    M1 --> M2[docker push: skipped\nrelease-please merge commit\nimage already built+pushed for the\nparent commit by the previous push]
 ```
 
 Also available: [manual deploy](manual-deploy.md)
