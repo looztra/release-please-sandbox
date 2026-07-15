@@ -13,59 +13,82 @@ behind each gate shown below, and
 
 ```mermaid
 flowchart TD
-    A[Push to main] --> B[detect: is this a release-please merge commit?]
-    B -->|false| C[publish-release: skipped]
-    C --> D[release-pr: run release-please-action]
-    D -->|no releasable commits\nno PR pending| E[prs_created = false]
-    E --> F[deploy-stg: skipped]
-    F --> G([Staging unchanged])
-    D -.parallel.-> H[code-checks: pre-commit\ndetects is-release-please-merge = false]
-    H --> H1[fake-build: app + docker build\nimage sha-<commit-sha>]
-    H1 --> H2[docker push: NOT skipped\nnot a release-please merge commit]
-    D -.parallel.-> I[workflows-checks: actionlint + zizmor]
+    subgraph RP[release-please.yaml]
+        A[Push to main] --> B[detect job\naction: detect-release-please-merge]
+        B -->|is-release-please-merge = false| C[publish-release: skipped]
+        C --> D[release-pr job\ngoogleapis/release-please-action]
+        D -->|no releasable commits\nno PR pending| E[prs_created = false]
+        E --> F[deploy-stg: skipped]
+        F --> G([Staging unchanged])
+    end
+
+    subgraph CC[code-checks.yaml]
+        H[pre-commit job\naction: detect-release-please-merge\nis-release-please-merge = false]
+        H --> H1[fake-build job\naction: fake-build\nimage sha-<commit-sha>]
+        H1 --> H2[docker push step: NOT skipped\npush-image input = true]
+    end
+
+    A -.triggers in parallel.-> H
 ```
 
 ## 2. Candidate release (a `feat`/`fix`/etc. push creates or updates the release PR)
 
 ```mermaid
 flowchart TD
-    A[Push feat/fix/perf/... to main] --> B[detect: not a release merge]
-    B --> C[publish-release: skipped]
-    C --> D[release-pr: release-please-action]
-    D --> E{Releasable commits\nsince last tag?}
-    E -->|yes| F[Open/update release PR\nbranch release-please--branches--main\nlabel autorelease: pending]
-    F --> G[prs_created = true]
-    G --> H[deploy-stg: gated on prs_created]
-    H --> I[fake-deploy stg\nimage sha-<commit-sha>]
-    I --> J([Staging now matches\nwhat next release will ship])
-    F -.awaits.-> K([Maintainer reviews/merges release PR])
-    A -.parallel.-> L[code-checks: pre-commit\ndetects is-release-please-merge = false]
-    L --> L1[fake-build: app + docker build\nimage sha-<commit-sha>]
-    L1 --> L2[docker push: NOT skipped\nnot a release-please merge commit]
+    subgraph RP[release-please.yaml]
+        A[Push feat/fix/perf/... to main] --> B[detect job\nis-release-please-merge = false]
+        B --> C[publish-release: skipped]
+        C --> D[release-pr job\ngoogleapis/release-please-action]
+        D --> E{Releasable commits\nsince last tag?}
+        E -->|yes| F[Open/update release PR\nbranch release-please--branches--main\nlabel autorelease: pending]
+        F --> G[prs_created = true]
+        G --> H[deploy-stg job\ngated on prs_created]
+        H --> I[action: fake-deploy\nstg, image sha-<commit-sha>]
+        I --> J([Staging now matches\nwhat next release will ship])
+        F -.awaits.-> K([Maintainer reviews/merges release PR])
+    end
+
+    subgraph CC[code-checks.yaml]
+        L[pre-commit job\naction: detect-release-please-merge\nis-release-please-merge = false]
+        L --> L1[fake-build job\naction: fake-build\nimage sha-<commit-sha>]
+        L1 --> L2[docker push step: NOT skipped\npush-image input = true]
+    end
+
+    A -.triggers in parallel.-> L
 ```
 
 ## 3. Release created (release PR merged → tag/release → prod)
 
 ```mermaid
 flowchart TD
-    A[Merge release PR into main] --> B[Push: merge commit lands on main]
-    B --> C[detect: is-release-please-merge = true, pr-number]
-    C --> D[publish-release job]
-    D --> D1[Read version from .release-please-manifest.json]
-    D1 --> D2[Target = merge commit's first parent\nthe already-staged commit]
-    D2 --> D3[Create tag vX.Y.Z + GitHub release\nnotes sliced from CHANGELOG.md]
-    D3 --> D4[Swap label: pending → autorelease: tagged]
-    D4 --> E[release-pr job runs again]
-    E --> F[Only the hidden bump commit since tag\n→ no new PR created]
-    F --> G[prs_created = false]
-    G --> H[deploy-stg: skipped\nalready deployed by the previous push]
-    D3 --> I[Tag push v* triggers\nretag-and-deploy-prod.yaml]
-    I --> J[retag: fake-retag sha-<commit> → vX.Y.Z]
-    J --> K[deploy-prod: environment=prod\nfake-deploy image vX.Y.Z]
-    K --> L([Prod runs the same artifact\nalready validated on staging])
-    B -.parallel.-> M[code-checks: pre-commit\ndetects is-release-please-merge = true]
-    M --> M1[fake-build: app + docker build\nimage sha-<merge-commit-sha>]
-    M1 --> M2[docker push: skipped\nrelease-please merge commit\nimage already built+pushed for the\nparent commit by the previous push]
+    subgraph RP[release-please.yaml]
+        A[Merge release PR into main] --> B[Push: merge commit lands on main]
+        B --> C[detect job\naction: detect-release-please-merge\nis-release-please-merge = true, pr-number]
+        C --> D[publish-release job]
+        D --> D1[Read version from .release-please-manifest.json]
+        D1 --> D2[Target = merge commit's first parent\nthe already-staged commit]
+        D2 --> D3[Create tag vX.Y.Z + GitHub release\nnotes sliced from CHANGELOG.md]
+        D3 --> D4[Swap label: pending → autorelease: tagged]
+        D4 --> E[release-pr job runs again\ngoogleapis/release-please-action]
+        E --> F[Only the hidden bump commit since tag\n→ no new PR created]
+        F --> G[prs_created = false]
+        G --> H[deploy-stg job: skipped\nalready deployed by the previous push]
+    end
+
+    subgraph CC[code-checks.yaml]
+        M[pre-commit job\naction: detect-release-please-merge\nis-release-please-merge = true]
+        M --> M1[fake-build job\naction: fake-build\nimage sha-<merge-commit-sha>]
+        M1 --> M2[docker push step: skipped\npush-image input = false\nimage already built+pushed for the\nparent commit by the previous push]
+    end
+
+    subgraph RD[retag-and-deploy-prod.yaml]
+        I[retag job\ninline steps, no composite action]
+        I --> J[deploy-prod job\naction: fake-deploy\nprod, image vX.Y.Z]
+        J --> L([Prod runs the same artifact\nalready validated on staging])
+    end
+
+    D3 -->|Tag push v* triggers| I
+    B -.triggers in parallel.-> M
 ```
 
 Also available: [manual deploy](manual-deploy.md)
