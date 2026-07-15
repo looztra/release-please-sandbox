@@ -1,207 +1,292 @@
 # Functional workflows
 
-Visual summary of the three situations the CI in this repository handles:
-an ordinary push, a push that becomes a release candidate, and the merge
-that turns a candidate into a published release. See
-[release-please default behavior](release-please-default-behavior.md) and
+This page is an **explanation** of the release automation shape: it first gives
+a broad view of what happens for each important event, then a detailed view of
+which GitHub workflow, job, and composite action produces and consumes each
+output.
+
+See [release-please default behavior](release-please-default-behavior.md) and
 [staging deploy gating](staging-deploy-gating.md) for the detailed reasoning
-behind each gate shown below, and
+behind the release gates, and
 [fake build and docker push gating](fake-build-push-gating.md) for the
 `code-checks` build/push details.
 
-## 1. Normal push (no releasable changes pending/created)
+## Big feature overview
+
+```mermaid
+flowchart TD
+    PR([Code pushed to a PR branch])
+    MAIN([Code pushed to main])
+    PREP([Release prepared by Release Please])
+    MERGE([Release PR merged])
+    TAG([Release tag v* created])
+
+    PR --> PR_CC[code-checks.yaml\npre-commit + fake app/docker build\nfake docker push runs]
+
+    MAIN --> MAIN_CC[code-checks.yaml\npre-commit + fake app/docker build\nfake docker push runs]
+    MAIN --> RP[release-please.yaml\nclassifies commits since last release]
+
+    RP -->|no release PR created/updated| NO_RELEASE[No staging deploy\nstaging unchanged]
+    RP -->|release PR created/updated| PREP
+    PREP --> STG[release-please.yaml\nfake deploy to stg\nimage sha-<commit-sha>]
+    PREP --> WAIT([Maintainer validates and merges the release PR])
+
+    WAIT --> MERGE
+    MERGE --> MERGE_CC[code-checks.yaml\nfake build still runs\nfake docker push is skipped]
+    MERGE --> PUBLISH[release-please.yaml\ncreate GitHub release + tag at\nmerge commit's first parent]
+
+    PUBLISH --> TAG
+    TAG --> PROD[retag-and-deploy-prod.yaml\nfake retag sha-<commit> to vX.Y.Z\nfake deploy to prod]
+```
+
+## Detailed view
+
+The diagrams below keep two levels of grouping:
+
+1. workflow file (`code-checks.yaml`, `release-please.yaml`, ...);
+2. job/action blocks inside the workflow.
+
+Diamond-shaped output nodes show the relevant GitHub Actions outputs. Edges
+labelled `consumes` show where one job output becomes another job's condition
+or action input.
+
+### 1. Code pushed to a PR branch
+
+Only `code-checks.yaml` runs for a pull request branch update. The push becomes
+a `pull_request` event (`opened`, `synchronize`, `reopened`, or
+`ready_for_review`) targeting `main`; `release-please.yaml` is not triggered.
+
+```mermaid
+flowchart TD
+    EVT([Pull request branch updated\npull_request event targeting main])
+
+    subgraph CC[code-checks.yaml]
+        subgraph PC[pre-commit job]
+            DETECT[[Composite action:\ndetect-release-please-merge]]
+            DETECT_OUT{{Action outputs:\nis-release-please-merge = false\npr-number = ''}}
+            PC_OUT{{Job output:\nis-release-please-merge\nsource: steps.detect.outputs.is-release-please-merge}}
+            PC_OTHER[Other steps:\ncheckout, mise setup,\npre-commit checks]
+
+            DETECT --> DETECT_OUT
+            DETECT_OUT --> PC_OUT
+            DETECT_OUT --> PC_OTHER
+        end
+
+        subgraph FB[fake-build job]
+            FB_INPUT[Action input:\npush-image =\nneeds.pre-commit.outputs.is-release-please-merge != 'true'\n= true]
+            FAKE_BUILD[[Composite action:\nfake-build]]
+            APP_BUILD[Fake app build step]
+            DOCKER_BUILD[Fake docker build step\nreports image sha-<commit-sha>]
+            DOCKER_PUSH[Fake docker push step\nruns]
+
+            FB_INPUT --> FAKE_BUILD
+            FAKE_BUILD --> APP_BUILD --> DOCKER_BUILD --> DOCKER_PUSH
+        end
+
+        PC_OUT -->|consumes as fake-build input| FB_INPUT
+    end
+
+    EVT --> PC
+```
+
+### 2. Code pushed to `main`
+
+A push to `main` triggers both `code-checks.yaml` and `release-please.yaml`.
+The code-checks side is the same as for a PR branch, but the release side may
+either do nothing or prepare a release PR.
 
 ```mermaid
 flowchart TD
     EVT([Push to main])
 
-    subgraph RP[release-please.yaml]
-        subgraph J_detect[detect job]
-            A_detect[[Action: detect-release-please-merge]]
-            O_detect{{Job output:\nis-release-please-merge = false\npr-number = ''}}
-            A_detect --> O_detect
-        end
-
-        J_publish[publish-release job: skipped]
-
-        subgraph J_rp[release-pr job]
-            A_rp[[googleapis/release-please-action]]
-            O_rp{{Job output:\nprs-created = false}}
-            A_rp -->|no releasable commits\nno PR pending| O_rp
-        end
-
-        J_deploy[deploy-stg job: skipped]
-        STG([Staging unchanged])
-
-        O_detect -->|consumes: is-release-please-merge| J_publish
-        J_publish --> J_rp
-        O_rp -->|consumes: prs-created| J_deploy
-        J_deploy --> STG
-    end
-
     subgraph CC[code-checks.yaml]
-        subgraph J_precommit[pre-commit job]
-            A_pc[[Action: detect-release-please-merge]]
-            O_pc{{Job output:\nis-release-please-merge = false}}
-            A_pc --> O_pc
-            OTHER_PC[other steps:\nmise setup, run pre-commit checks]
-            O_pc --> OTHER_PC
+        subgraph PC[pre-commit job]
+            CC_DETECT[[Composite action:\ndetect-release-please-merge]]
+            CC_DETECT_OUT{{Action outputs:\nis-release-please-merge = false\npr-number = ''}}
+            CC_PC_OUT{{Job output:\nis-release-please-merge\nsource: steps.detect.outputs.is-release-please-merge}}
+            CC_OTHER[Other steps:\ncheckout, mise setup,\npre-commit checks]
+
+            CC_DETECT --> CC_DETECT_OUT
+            CC_DETECT_OUT --> CC_PC_OUT
+            CC_DETECT_OUT --> CC_OTHER
         end
 
-        subgraph J_fb[fake-build job]
-            A_fb[[Action: fake-build]]
-            FB_BUILD[docker build step\nimage sha-<commit-sha>]
-            FB_PUSH[docker push step: NOT skipped\ninput push-image = true]
-            A_fb --> FB_BUILD --> FB_PUSH
+        subgraph FB[fake-build job]
+            CC_FB_INPUT[Action input:\npush-image =\nneeds.pre-commit.outputs.is-release-please-merge != 'true'\n= true]
+            CC_FAKE_BUILD[[Composite action:\nfake-build]]
+            CC_DOCKER_BUILD[Fake docker build step\nimage sha-<commit-sha>]
+            CC_DOCKER_PUSH[Fake docker push step\nruns]
+
+            CC_FB_INPUT --> CC_FAKE_BUILD
+            CC_FAKE_BUILD --> CC_DOCKER_BUILD --> CC_DOCKER_PUSH
         end
 
-        O_pc -->|consumes: is-release-please-merge\nas push-image input| J_fb
+        CC_PC_OUT -->|consumes as fake-build input| CC_FB_INPUT
     end
 
-    EVT --> J_detect
-    EVT -.triggers in parallel.-> J_precommit
+    subgraph RP[release-please.yaml]
+        subgraph DETECT_JOB[detect job]
+            RP_DETECT[[Composite action:\ndetect-release-please-merge]]
+            RP_DETECT_OUT{{Action outputs:\nis-release-please-merge = false\npr-number = ''}}
+            RP_DETECT_JOB_OUT{{Job outputs:\nis-release-please-merge\npr-number\nsource: steps.detect.outputs.*}}
+
+            RP_DETECT --> RP_DETECT_OUT --> RP_DETECT_JOB_OUT
+        end
+
+        PUBLISH_SKIP[publish-release job\nskipped because\nis-release-please-merge = false]
+
+        subgraph RELEASE_PR[release-pr job]
+            RP_ACTION[[googleapis/release-please-action]]
+            RP_DECISION{Release PR created\nor updated?}
+            RP_ACTION_OUT{{Action output:\nprs_created = true or false}}
+            RP_JOB_OUT{{Job output:\nprs-created\nsource: steps.release-please.outputs.prs_created}}
+
+            RP_ACTION --> RP_DECISION
+            RP_DECISION --> RP_ACTION_OUT --> RP_JOB_OUT
+        end
+
+        subgraph DEPLOY_STG[deploy-stg job]
+            STG_INPUT[Job condition consumes:\nneeds.release-pr.outputs.prs-created == 'true']
+            FAKE_DEPLOY[[Composite action:\nfake-deploy]]
+            STG_RESULT[If true: fake deploy to stg\nimage sha-<commit-sha>\nIf false: job skipped]
+
+            STG_INPUT --> FAKE_DEPLOY --> STG_RESULT
+        end
+
+        RP_DETECT_JOB_OUT -->|consumes is-release-please-merge| PUBLISH_SKIP
+        PUBLISH_SKIP --> RELEASE_PR
+        RP_JOB_OUT -->|consumes prs-created| STG_INPUT
+    end
+
+    EVT --> PC
+    EVT -.triggers in parallel.-> DETECT_JOB
 ```
 
-## 2. Candidate release (a `feat`/`fix`/etc. push creates or updates the release PR)
+### 3. Release prepared by Release Please
+
+This is the `prs-created = true` branch of the previous diagram. Release Please
+has opened or updated the release PR, and the staging deploy runs for the same
+commit.
 
 ```mermaid
 flowchart TD
-    EVT([Push feat/fix/perf/... to main])
+    EVT([Push to main with releasable state])
 
     subgraph RP[release-please.yaml]
-        subgraph J_detect[detect job]
-            A_detect[[Action: detect-release-please-merge]]
-            O_detect{{Job output:\nis-release-please-merge = false}}
-            A_detect --> O_detect
-        end
-
-        J_publish[publish-release job: skipped]
-
-        subgraph J_rp[release-pr job]
-            A_rp[[googleapis/release-please-action]]
-            RP_DECISION{Releasable commits\nsince last tag?}
+        subgraph RELEASE_PR[release-pr job]
+            RP_ACTION[[googleapis/release-please-action]]
             RP_PR[Open/update release PR\nbranch release-please--branches--main\nlabel autorelease: pending]
-            O_rp{{Job output:\nprs-created = true}}
-            A_rp --> RP_DECISION
-            RP_DECISION -->|yes| RP_PR
-            RP_PR --> O_rp
+            RP_ACTION_OUT{{Action output:\nprs_created = true}}
+            RP_JOB_OUT{{Job output:\nprs-created = true\nsource: steps.release-please.outputs.prs_created}}
+
+            RP_ACTION --> RP_PR --> RP_ACTION_OUT --> RP_JOB_OUT
         end
 
-        subgraph J_deploy[deploy-stg job]
-            A_deploy[[Action: fake-deploy]]
-            DEPLOY_NOTE[stg, image sha-<commit-sha>]
-            A_deploy --> DEPLOY_NOTE
+        subgraph DEPLOY_STG[deploy-stg job]
+            STG_INPUT[Job condition consumes:\nneeds.release-pr.outputs.prs-created = true]
+            FAKE_DEPLOY[[Composite action:\nfake-deploy]]
+            STG_IMAGE[Action inputs:\nenvironment = stg\nimage-tag = sha-github.sha\ncommit-sha = github.sha]
+            STG_DONE([Staging now matches\nwhat the next release will ship])
+
+            STG_INPUT --> FAKE_DEPLOY --> STG_IMAGE --> STG_DONE
         end
 
-        STG([Staging now matches\nwhat next release will ship])
-        AWAIT([Maintainer reviews/merges release PR])
-
-        O_detect -->|consumes: is-release-please-merge| J_publish
-        J_publish --> J_rp
-        O_rp -->|consumes: prs-created| J_deploy
-        J_deploy --> STG
-        RP_PR -.awaits.-> AWAIT
+        RP_JOB_OUT -->|consumes prs-created| STG_INPUT
     end
 
-    subgraph CC[code-checks.yaml]
-        subgraph J_precommit[pre-commit job]
-            A_pc[[Action: detect-release-please-merge]]
-            O_pc{{Job output:\nis-release-please-merge = false}}
-            A_pc --> O_pc
-            OTHER_PC[other steps:\nmise setup, run pre-commit checks]
-            O_pc --> OTHER_PC
-        end
-
-        subgraph J_fb[fake-build job]
-            A_fb[[Action: fake-build]]
-            FB_BUILD[docker build step\nimage sha-<commit-sha>]
-            FB_PUSH[docker push step: NOT skipped\ninput push-image = true]
-            A_fb --> FB_BUILD --> FB_PUSH
-        end
-
-        O_pc -->|consumes: is-release-please-merge\nas push-image input| J_fb
-    end
-
-    EVT --> J_detect
-    EVT -.triggers in parallel.-> J_precommit
+    EVT --> RELEASE_PR
 ```
 
-## 3. Release created (release PR merged → tag/release → prod)
+### 4. Release created
+
+Merging the release PR creates a push to `main`. That single push triggers both
+`release-please.yaml` and `code-checks.yaml`. The publish job creates the
+release tag at the already-staged parent commit; that tag push then triggers
+`retag-and-deploy-prod.yaml`.
 
 ```mermaid
 flowchart TD
-    EVT1([Merge release PR into main\n→ push: merge commit lands on main])
+    EVT_MAIN([Release PR merged\npush: merge commit lands on main])
 
     subgraph RP[release-please.yaml]
-        subgraph J_detect[detect job]
-            A_detect[[Action: detect-release-please-merge]]
-            O_detect{{Job output:\nis-release-please-merge = true\npr-number = N}}
-            A_detect --> O_detect
+        subgraph DETECT_JOB[detect job]
+            RP_DETECT[[Composite action:\ndetect-release-please-merge]]
+            RP_DETECT_OUT{{Action outputs:\nis-release-please-merge = true\npr-number = N}}
+            RP_DETECT_JOB_OUT{{Job outputs:\nis-release-please-merge = true\npr-number = N\nsource: steps.detect.outputs.*}}
+
+            RP_DETECT --> RP_DETECT_OUT --> RP_DETECT_JOB_OUT
         end
 
-        subgraph J_publish[publish-release job]
-            PUB_1[Read version from .release-please-manifest.json]
-            PUB_2[Target = merge commit's first parent\nthe already-staged commit]
-            PUB_3[Create tag vX.Y.Z + GitHub release\nnotes sliced from CHANGELOG.md]
-            PUB_4[Swap label: pending → autorelease: tagged]
-            PUB_1 --> PUB_2 --> PUB_3 --> PUB_4
+        subgraph PUBLISH[publish-release job]
+            PUBLISH_INPUT[Job condition/input consumes:\nneeds.detect.outputs.is-release-please-merge = true\nneeds.detect.outputs.pr-number = N]
+            PUBLISH_STEPS[Aggregated inline steps:\nread manifest version\nchoose merge commit parent\ncreate GitHub release + tag\nflip release-please labels]
+            TAG_OUT([Creates tag vX.Y.Z\nat the already-staged parent commit])
+
+            PUBLISH_INPUT --> PUBLISH_STEPS --> TAG_OUT
         end
 
-        subgraph J_rp[release-pr job\nruns again]
-            A_rp[[googleapis/release-please-action]]
-            RP_NOTE[Only the hidden bump commit since tag\n→ no new PR created]
-            O_rp{{Job output:\nprs-created = false}}
-            A_rp --> RP_NOTE --> O_rp
+        subgraph RELEASE_PR[release-pr job]
+            RP_ACTION[[googleapis/release-please-action]]
+            RP_NOTE[Only the hidden release merge commit\nis left since the new tag]
+            RP_ACTION_OUT{{Action output:\nprs_created = false}}
+            RP_JOB_OUT{{Job output:\nprs-created = false\nsource: steps.release-please.outputs.prs_created}}
+
+            RP_ACTION --> RP_NOTE --> RP_ACTION_OUT --> RP_JOB_OUT
         end
 
-        J_deploy[deploy-stg job: skipped\nalready deployed by the previous push]
+        DEPLOY_SKIP[deploy-stg job skipped\nbecause prs-created = false]
 
-        O_detect -->|consumes: is-release-please-merge,\npr-number| J_publish
-        J_publish --> J_rp
-        O_rp -->|consumes: prs-created| J_deploy
+        RP_DETECT_JOB_OUT -->|consumes is-release-please-merge and pr-number| PUBLISH_INPUT
+        PUBLISH --> RELEASE_PR
+        RP_JOB_OUT -->|consumes prs-created| DEPLOY_SKIP
     end
 
     subgraph CC[code-checks.yaml]
-        subgraph J_precommit2[pre-commit job]
-            A_pc2[[Action: detect-release-please-merge]]
-            O_pc2{{Job output:\nis-release-please-merge = true}}
-            A_pc2 --> O_pc2
-            OTHER_PC2[other steps:\nmise setup, run pre-commit checks]
-            O_pc2 --> OTHER_PC2
+        subgraph PC[pre-commit job]
+            CC_DETECT[[Composite action:\ndetect-release-please-merge]]
+            CC_DETECT_OUT{{Action outputs:\nis-release-please-merge = true\npr-number = N}}
+            CC_PC_OUT{{Job output:\nis-release-please-merge = true\nsource: steps.detect.outputs.is-release-please-merge}}
+            CC_OTHER[Other steps:\ncheckout, mise setup,\npre-commit checks]
+
+            CC_DETECT --> CC_DETECT_OUT
+            CC_DETECT_OUT --> CC_PC_OUT
+            CC_DETECT_OUT --> CC_OTHER
         end
 
-        subgraph J_fb2[fake-build job]
-            A_fb2[[Action: fake-build]]
-            FB_BUILD2[docker build step\nimage sha-<merge-commit-sha>]
-            FB_PUSH2[docker push step: skipped\ninput push-image = false\nimage already built+pushed for the\nparent commit by the previous push]
-            A_fb2 --> FB_BUILD2 --> FB_PUSH2
+        subgraph FB[fake-build job]
+            FB_INPUT[Action input:\npush-image =\nneeds.pre-commit.outputs.is-release-please-merge != 'true'\n= false]
+            FAKE_BUILD[[Composite action:\nfake-build]]
+            DOCKER_BUILD[Fake docker build step\nimage sha-<merge-commit-sha>]
+            DOCKER_PUSH[Fake docker push step\nskipped]
+
+            FB_INPUT --> FAKE_BUILD --> DOCKER_BUILD --> DOCKER_PUSH
         end
 
-        O_pc2 -->|consumes: is-release-please-merge\nas push-image input| J_fb2
+        CC_PC_OUT -->|consumes as fake-build input| FB_INPUT
     end
 
-    EVT2([Tag push v*])
+    EVT_TAG([Tag push v*])
 
-    subgraph RD[retag-and-deploy-prod.yaml]
-        J_retag[retag job:\ninline steps, no composite action]
+    subgraph PROD[retag-and-deploy-prod.yaml]
+        RETAG[retag job\ninline steps, no composite action\nfake retag sha-<commit> → vX.Y.Z]
 
-        subgraph J_deployprod[deploy-prod job]
-            A_deployprod[[Action: fake-deploy]]
-            DEPLOYPROD_NOTE[prod, image vX.Y.Z]
-            A_deployprod --> DEPLOYPROD_NOTE
+        subgraph DEPLOY_PROD[deploy-prod job]
+            PROD_DEPLOY[[Composite action:\nfake-deploy]]
+            PROD_INPUTS[Action inputs:\nenvironment = prod\nimage-tag = github.ref_name\ncommit-sha = github.sha]
+            PROD_DONE([Prod runs the same artifact\nalready validated on staging])
+
+            PROD_DEPLOY --> PROD_INPUTS --> PROD_DONE
         end
 
-        PROD([Prod runs the same artifact\nalready validated on staging])
-
-        J_retag --> J_deployprod --> PROD
+        RETAG --> DEPLOY_PROD
     end
 
-    EVT1 --> J_detect
-    EVT1 -.triggers in parallel.-> J_precommit2
-    PUB_3 -->|creates the tag,\nwhich raises| EVT2
-    EVT2 --> J_retag
+    EVT_MAIN --> DETECT_JOB
+    EVT_MAIN -.triggers in parallel.-> PC
+    TAG_OUT -->|raises| EVT_TAG
+    EVT_TAG --> RETAG
 ```
 
 Also available: [manual deploy](manual-deploy.md)
 (`deploy-manual.yaml`, `workflow_dispatch`) lets someone deploy any existing
-tag to `stg` or `prod` on demand, independent of these three flows.
+tag to `stg` or `prod` on demand, independent of these flows.
