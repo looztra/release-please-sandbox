@@ -1,12 +1,12 @@
 ---
 name: Fake build
 description: >-
-  Simulates building the app and its Docker image for the current commit by
-  reporting the built commit and fake image reference to the step summary.
-  No real app is built and no real image is built or pushed in this sandbox.
-  The image tag follows the same 'sha-<commit-sha>' convention used by the
-  fake-deploy action, so the tag reported here is the one deploy-stg later
-  fake-deploys.
+  Simulates building the app and its Docker image for the current commit,
+  reporting the build and (optionally) the push as separate steps in the
+  step summary. No real app is built and no real image is built or pushed
+  in this sandbox. The image tag follows the same 'sha-<commit-sha>'
+  convention used by the fake-deploy action, so the tag reported here is
+  the one deploy-stg later fake-deploys.
 
 inputs:
   commit-sha:
@@ -18,6 +18,13 @@ inputs:
       the step summary.
     required: false
     default: ''
+  push-image:
+    description: >-
+      Whether to simulate pushing the built image ('true'/'false'). When
+      'false', only the fake docker build step runs and is reported; the
+      fake docker push step is skipped entirely.
+    required: false
+    default: 'true'
 
 runs:
   using: composite
@@ -44,11 +51,11 @@ runs:
 
         echo "::group::Fake docker build"
         echo "Building docker image ${FAKE_IMAGE_REF}..."
-        echo "Docker build complete (no real image built or pushed in this sandbox)."
+        echo "Docker build complete (no real image pushed in this sandbox)."
         echo "::endgroup::"
 
         {
-          echo "## 🛠️ Fake app + docker build"
+          echo "## 🛠️ Fake docker build"
           echo ""
           echo "| What | Value |"
           echo "| ---- | ----- |"
@@ -62,4 +69,30 @@ runs:
           echo "> simulates building and tagging the image for this exact"
           echo "> commit, using the same \`sha-<commit-sha>\` tag convention"
           echo "> that \`deploy-stg\` later fake-deploys."
+        } >> "$GITHUB_STEP_SUMMARY"
+
+    - name: Fake docker push
+      if: inputs.push-image == 'true'
+      shell: bash
+      env:
+        COMMIT_SHA: ${{ inputs.commit-sha }}
+        FAKE_IMAGE: ghcr.io/${{ github.repository }}
+      run: |
+        IMAGE_TAG="sha-${COMMIT_SHA}"
+        FAKE_IMAGE_REF="${FAKE_IMAGE}:${IMAGE_TAG}"
+
+        echo "::group::Fake docker push"
+        echo "Pushing docker image ${FAKE_IMAGE_REF}..."
+        echo "Docker push complete (no real image pushed in this sandbox)."
+        echo "::endgroup::"
+
+        {
+          echo "## 📤 Fake docker push"
+          echo ""
+          echo "| What | Value |"
+          echo "| ---- | ----- |"
+          echo "| Fake image pushed | \`${FAKE_IMAGE_REF}\` |"
+          echo ""
+          echo "> No real image is pushed in this sandbox: this simulates"
+          echo "> pushing the image built above to the registry."
         } >> "$GITHUB_STEP_SUMMARY"
