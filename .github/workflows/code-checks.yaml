@@ -25,6 +25,8 @@ jobs:
     permissions:
       contents: read
       pull-requests: read
+    outputs:
+      is-release-please-merge: ${{ steps.detect.outputs.is-release-please-merge }}
 
     steps:
       - name: Checkout current branch
@@ -34,6 +36,7 @@ jobs:
           persist-credentials: false
 
       - name: Detect release-please merge commit
+        id: detect
         uses: ./.github/actions/detect-release-please-merge
 
       - uses: jdx/mise-action@e6a8b3978addb5a52f2b4cd9d91eafa7f0ab959d # v4.2.0
@@ -48,3 +51,24 @@ jobs:
           echo "::group::Run pre-commit checks"
           mise run precommit:run
           echo "::endgroup::"
+
+  fake-build:
+    name: Fake app + docker build
+    needs: pre-commit
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout current branch
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Fake app + docker build
+        uses: ./.github/actions/fake-build
+        with:
+          commit-sha: ${{ github.sha }}
+          commit-message: ${{ github.event.head_commit.message }}
+          push-image: ${{ needs.pre-commit.outputs.is-release-please-merge != 'true' }}

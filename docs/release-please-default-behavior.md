@@ -56,8 +56,8 @@ bump files**. A `git checkout v0.1.0` therefore yields a `version.txt` and a
 `CHANGELOG.md` that match the release. Moving the tag to the trigger commit
 means the tagged tree carries the *previous* version in those files.
 
-For the deployment workflow targeted by this study (see
-[options considered](release-tag-options.md)), this trade-off is explicitly
+For this repository's deployment workflow (see
+[release workflow](release-workflow.md)), this trade-off is explicitly
 accepted: having `CHANGELOG.md` and `version.txt` out of sync with the tag is
 not an issue, while having staging and production run the exact same artifact
 is the hard requirement.

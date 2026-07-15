@@ -1,7 +1,7 @@
 # Release workflow: publish at the staging-deployed commit
 
 Status: **implemented** in
-[release-please.yaml](../.github/workflows/release-please.yaml) (PR #10),
+[release-please.yaml](../../.github/workflows/release-please.yaml) (PR #10),
 after an adversarial review of the initial proposal (see
 [Design revisions](#design-revisions-from-the-adversarial-review)).
 
@@ -14,7 +14,7 @@ tag and the GitHub release at the commit that was deployed to staging.
 A single workflow triggered by `push` on `main`, with four serialized jobs:
 
 1. **`detect`**: runs the local composite action
-   [detect-release-please-merge](../.github/actions/detect-release-please-merge/action.yaml)
+   [detect-release-please-merge](../../.github/actions/detect-release-please-merge/action.yaml)
    (shared with the code-checks workflow) and exposes
    `is-release-please-merge` and `pr-number` outputs.
 2. **`publish-release`** (only when the pushed commit is a release PR merge
@@ -27,7 +27,7 @@ A single workflow triggered by `push` on `main`, with four serialized jobs:
 4. **`deploy-stg`**: the fake staging deployment, gated on the `prs_created`
    output of the release-please action — it runs only when release-please
    created or updated a release PR for the push (see
-   [staging deploy gating](staging-deploy-gating.md)).
+   [staging deploy gating](../staging-deploy-gating.md)).
 
 Key building blocks:
 
@@ -117,7 +117,7 @@ Other revisions against the first draft:
   version, so this is harmless.
 
   How to keep it harmless: keep `chore` hidden in the `changelog-sections` of
-  [release-please-config.json](../release-please-config.json) (it is), so the
+  [release-please-config.json](../../release-please-config.json) (it is), so the
   release merge commits never surface in future changelogs.
 - **The release merge commit also deploys to staging**: **resolved**. This
   was originally accepted as noise (one extra staging image whose only delta
@@ -125,7 +125,7 @@ Other revisions against the first draft:
   now a `deploy-stg` job of this same workflow, gated on the `prs_created`
   output of the release-please action — staging deploys only when
   release-please created or updated a release PR for the push (see
-  [staging deploy gating](staging-deploy-gating.md)). On the release merge
+  [staging deploy gating](../staging-deploy-gating.md)). On the release merge
   push, release-please creates no PR (the only new commit since the tag is
   the hidden release merge commit), so no staging image is built or deployed
   for the bump commit, and nothing needs one: the release tag points to the
@@ -152,7 +152,7 @@ Other revisions against the first draft:
      whose branch is behind `main` is then blocked by GitHub until
      release-please has refreshed it.
   2. **Keep `always-update: true`** in
-     [release-please-config.json](../release-please-config.json) (already
+     [release-please-config.json](../../release-please-config.json) (already
      set). Per the official manifest-releaser documentation, it will "always
      update existing pull requests when changes are added, instead of only
      when the release notes change [...] useful if pull requests must not be
