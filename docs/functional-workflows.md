@@ -8,7 +8,7 @@ output.
 See [release-please default behavior](release-please-default-behavior.md) and
 [staging deploy gating](staging-deploy-gating.md) for the detailed reasoning
 behind the release gates, and
-[fake build and docker push gating](fake-build-push-gating.md) for the
+[build and docker push gating](fake-build-push-gating.md) for the
 `code-checks` build/push details.
 
 ## Big feature overview
@@ -21,22 +21,22 @@ flowchart TD
     MERGE([Release PR merged])
     TAG([Release tag v* created])
 
-    PR --> PR_CC[code-checks.yaml\npre-commit + fake app/docker build\nfake docker push runs]
+    PR --> PR_CC[code-checks.yaml\npre-commit + app/docker build\ndocker push runs]
 
-    MAIN --> MAIN_CC[code-checks.yaml\npre-commit + fake app/docker build\nfake docker push runs]
+    MAIN --> MAIN_CC[code-checks.yaml\npre-commit + app/docker build\ndocker push runs]
     MAIN --> RP[release-please.yaml\nclassifies commits since last release]
 
     RP -->|no release PR created/updated| NO_RELEASE[No staging deploy\nstaging unchanged]
     RP -->|release PR created/updated| PREP
-    PREP --> STG[release-please.yaml\nfake deploy to stg\nimage sha-<commit-sha>]
+    PREP --> STG[release-please.yaml\ndeploy to stg\nimage sha-<commit-sha>]
     PREP --> WAIT([Maintainer validates and merges the release PR])
 
     WAIT --> MERGE
-    MERGE --> MERGE_CC[code-checks.yaml\nfake build still runs\nfake docker push is skipped]
+    MERGE --> MERGE_CC[code-checks.yaml\nbuild still runs\ndocker push is skipped]
     MERGE --> PUBLISH[release-please.yaml\ncreate GitHub release + tag at\nmerge commit's first parent]
 
     PUBLISH --> TAG
-    TAG --> PROD[retag-and-deploy-prod.yaml\nfake retag sha-<commit> to vX.Y.Z\nfake deploy to prod]
+    TAG --> PROD[retag-and-deploy-prod.yaml\nretag sha-<commit> to vX.Y.Z\ndeploy to prod]
 ```
 
 ## Detailed view
@@ -72,18 +72,18 @@ flowchart TD
             DETECT_OUT --> PC_OTHER
         end
 
-        subgraph FB[fake-build job]
+        subgraph FB[build job]
             FB_INPUT[Action input:\npush-image =\nneeds.pre-commit.outputs.is-release-please-merge != 'true'\n= true]
-            FAKE_BUILD[[Composite action:\nfake-build]]
-            APP_BUILD[Fake app build step]
-            DOCKER_BUILD[Fake docker build step\nreports image sha-<commit-sha>]
-            DOCKER_PUSH[Fake docker push step\nruns]
+            BUILD_ACTION[[Composite action:\napp/docker build]]
+            APP_BUILD[App build step]
+            DOCKER_BUILD[Docker build step\nreports image sha-<commit-sha>]
+            DOCKER_PUSH[Docker push step\nruns]
 
-            FB_INPUT --> FAKE_BUILD
-            FAKE_BUILD --> APP_BUILD --> DOCKER_BUILD --> DOCKER_PUSH
+            FB_INPUT --> BUILD_ACTION
+            BUILD_ACTION --> APP_BUILD --> DOCKER_BUILD --> DOCKER_PUSH
         end
 
-        PC_OUT -->|consumes as fake-build input| FB_INPUT
+        PC_OUT -->|consumes as build input| FB_INPUT
     end
 
     EVT --> PC
@@ -111,17 +111,17 @@ flowchart TD
             CC_DETECT_OUT --> CC_OTHER
         end
 
-        subgraph FB[fake-build job]
+        subgraph FB[build job]
             CC_FB_INPUT[Action input:\npush-image =\nneeds.pre-commit.outputs.is-release-please-merge != 'true'\n= true]
-            CC_FAKE_BUILD[[Composite action:\nfake-build]]
-            CC_DOCKER_BUILD[Fake docker build step\nimage sha-<commit-sha>]
-            CC_DOCKER_PUSH[Fake docker push step\nruns]
+            CC_BUILD_ACTION[[Composite action:\napp/docker build]]
+            CC_DOCKER_BUILD[Docker build step\nimage sha-<commit-sha>]
+            CC_DOCKER_PUSH[Docker push step\nruns]
 
-            CC_FB_INPUT --> CC_FAKE_BUILD
-            CC_FAKE_BUILD --> CC_DOCKER_BUILD --> CC_DOCKER_PUSH
+            CC_FB_INPUT --> CC_BUILD_ACTION
+            CC_BUILD_ACTION --> CC_DOCKER_BUILD --> CC_DOCKER_PUSH
         end
 
-        CC_PC_OUT -->|consumes as fake-build input| CC_FB_INPUT
+        CC_PC_OUT -->|consumes as build input| CC_FB_INPUT
     end
 
     subgraph RP[release-please.yaml]
@@ -147,10 +147,10 @@ flowchart TD
 
         subgraph DEPLOY_STG[deploy-stg job]
             STG_INPUT[Job condition consumes:\nneeds.release-pr.outputs.prs-created == 'true']
-            FAKE_DEPLOY[[Composite action:\nfake-deploy]]
-            STG_RESULT[If true: fake deploy to stg\nimage sha-<commit-sha>\nIf false: job skipped]
+            DEPLOY_ACTION[[Composite action:\ndeploy]]
+            STG_RESULT[If true: deploy to stg\nimage sha-<commit-sha>\nIf false: job skipped]
 
-            STG_INPUT --> FAKE_DEPLOY --> STG_RESULT
+            STG_INPUT --> DEPLOY_ACTION --> STG_RESULT
         end
 
         RP_DETECT_JOB_OUT -->|consumes is-release-please-merge| PUBLISH_SKIP
@@ -184,11 +184,11 @@ flowchart TD
 
         subgraph DEPLOY_STG[deploy-stg job]
             STG_INPUT[Job condition consumes:\nneeds.release-pr.outputs.prs-created = true]
-            FAKE_DEPLOY[[Composite action:\nfake-deploy]]
+            DEPLOY_ACTION[[Composite action:\ndeploy]]
             STG_IMAGE[Action inputs:\nenvironment = stg\nimage-tag = sha-github.sha\ncommit-sha = github.sha]
             STG_DONE([Staging now matches\nwhat the next release will ship])
 
-            STG_INPUT --> FAKE_DEPLOY --> STG_IMAGE --> STG_DONE
+            STG_INPUT --> DEPLOY_ACTION --> STG_IMAGE --> STG_DONE
         end
 
         RP_JOB_OUT -->|consumes prs-created| STG_INPUT
@@ -253,25 +253,25 @@ flowchart TD
             CC_DETECT_OUT --> CC_OTHER
         end
 
-        subgraph FB[fake-build job]
+        subgraph FB[build job]
             FB_INPUT[Action input:\npush-image =\nneeds.pre-commit.outputs.is-release-please-merge != 'true'\n= false]
-            FAKE_BUILD[[Composite action:\nfake-build]]
-            DOCKER_BUILD[Fake docker build step\nimage sha-<merge-commit-sha>]
-            DOCKER_PUSH[Fake docker push step\nskipped]
+            BUILD_ACTION[[Composite action:\napp/docker build]]
+            DOCKER_BUILD[Docker build step\nimage sha-<merge-commit-sha>]
+            DOCKER_PUSH[Docker push step\nskipped]
 
-            FB_INPUT --> FAKE_BUILD --> DOCKER_BUILD --> DOCKER_PUSH
+            FB_INPUT --> BUILD_ACTION --> DOCKER_BUILD --> DOCKER_PUSH
         end
 
-        CC_PC_OUT -->|consumes as fake-build input| FB_INPUT
+        CC_PC_OUT -->|consumes as build input| FB_INPUT
     end
 
     EVT_TAG([Tag push v*])
 
     subgraph PROD[retag-and-deploy-prod.yaml]
-        RETAG[retag job\ninline steps, no composite action\nfake retag sha-<commit> → vX.Y.Z]
+        RETAG[retag job\ninline steps, no composite action\nretag sha-<commit> → vX.Y.Z]
 
         subgraph DEPLOY_PROD[deploy-prod job]
-            PROD_DEPLOY[[Composite action:\nfake-deploy]]
+            PROD_DEPLOY[[Composite action:\ndeploy]]
             PROD_INPUTS[Action inputs:\nenvironment = prod\nimage-tag = github.ref_name\ncommit-sha = github.sha]
             PROD_DONE([Prod runs the same artifact\nalready validated on staging])
 
