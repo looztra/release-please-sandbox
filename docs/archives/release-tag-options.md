@@ -20,7 +20,7 @@ In this context, having `CHANGELOG.md` and `version.txt` out of sync with the
 tagged tree is explicitly **not an issue**.
 
 As established in
-[release-please default behavior](release-please-default-behavior.md), the
+[release-please default behavior](../release-please-default-behavior.md), the
 commit to tag is always the **first parent of the release PR merge commit**.
 
 ## Options considered
@@ -64,7 +64,7 @@ Selected because:
   PR without its tag.
 
 The detailed design is in
-[release workflow](release-workflow-proposal.md).
+[release workflow](../release-workflow.md).
 
 ### Option 4: switch tools
 

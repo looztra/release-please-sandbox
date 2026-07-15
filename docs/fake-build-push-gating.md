@@ -5,6 +5,9 @@ Status: **implemented** in
 composite action
 [fake-build](../.github/actions/fake-build/action.yaml).
 
+This page is reference documentation for the current `code-checks` build/push
+gate.
+
 ## What it simulates
 
 A `fake-build` job runs after `pre-commit` in the `code-checks` workflow, on

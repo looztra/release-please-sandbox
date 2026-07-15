@@ -1,28 +1,34 @@
 # Documentation
 
-Study of the release-please workflow and how to align GitHub releases and tags
-with the commit that was deployed to staging.
+Current reference documentation for this repository's release automation.
+Historical design studies are kept in [archives](archives/).
 
-- [Functional workflows](functional-workflows.md): mermaid diagrams of the
-  three situations the CI handles — a normal push, a push that becomes a
-  release candidate, and a release PR merge that publishes a release.
-- [Release-please default behavior](release-please-default-behavior.md):
-  how release-please works out of the box, and which commit the GitHub release
-  and tag point to (verified on the `v0.1.0` release of this repository).
-- [Options considered](release-tag-options.md): the options evaluated to make
-  the release tag point to the staging-deployed commit, and why option 3
-  (`skip-github-release` plus a custom publish job) was selected.
-- [Release workflow](release-workflow-proposal.md): the implemented CI
-  design, the revisions coming from its adversarial review, the failure
-  modes, and the caveats we accept.
-- [Staging deploy gating](staging-deploy-gating.md): options to deploy to
-  staging only when release-please would have created (or updated) a release
-  PR, the race conditions of each option, and why gating on the
-  release-please action outputs is selected (and now implemented).
-- [Fake build and docker push gating](fake-build-push-gating.md): the
-  `code-checks` job that simulates building the app and its Docker image, and
-  why the fake docker push is skipped on the release-please merge commit.
-- [Manual deploy](manual-deploy.md): the `workflow_dispatch`-only workflow
-  deploying a given tag to `stg` or `prod`, and the corner cases of dynamic
-  GitHub environment selection (auto-created environments, deployment branch
-  policies, deployment records).
+## Start here
+
+- [Functional workflows](functional-workflows.md): overview and detailed
+  Mermaid diagrams of the implemented CI/release/deploy flow.
+- [Release workflow](release-workflow.md): reference for the implemented
+  `release-please.yaml` workflow and why the release tag points at the
+  already-staged commit.
+
+## Reference pages
+
+- [Release-please default behaviour](release-please-default-behavior.md): how
+  Release Please tags releases by default, and why this repository overrides
+  the publish step.
+- [Staging deploy gating](staging-deploy-gating.md): the current rule for
+  deploying to staging only when Release Please created or updated a release
+  PR.
+- [Build and docker push gating](fake-build-push-gating.md): how `code-checks`
+  builds the app/image and skips the docker push on release PR merge commits.
+- [Manual deploy](manual-deploy.md): the `workflow_dispatch` workflow for
+  deploying an existing tag to `stg` or `prod`.
+
+## Archives
+
+- [Release tag options](archives/release-tag-options.md): option study for
+  aligning release tags with the staging-deployed commit.
+- [Release workflow proposal](archives/release-workflow-proposal.md): original
+  proposal, adversarial-review revisions, failure modes, and caveats.
+- [Staging deploy gating study](archives/staging-deploy-gating-study.md):
+  option study and race analysis for staging deploy gating.
