@@ -39,6 +39,70 @@ flowchart TD
     TAG --> PROD[retag-and-deploy-prod.yaml\nretag sha-<commit> to vX.Y.Z\ndeploy to prod]
 ```
 
+## Release tag placement
+
+The key difference from stock Release Please is where the final release tag is
+created. Release Please still detects the release and prepares the release PR;
+this repository changes the publish step so the tag points at the commit that
+was already built and deployed to staging.
+
+### Default Release Please behaviour
+
+```mermaid
+flowchart LR
+    C0[Previous release tag]
+    C1[Feature/fix commit\ninitiates next release PR]
+    RPB[Release Please branch\nbump commit:\nCHANGELOG + manifest + version.txt]
+    M[Release PR merge commit\none commit on top of C1]
+    T([Release tag vX.Y.Z\ncreated by Release Please])
+    REL[GitHub release]
+
+    C0 --> C1
+    C1 --> RPB
+    C1 --> M
+    RPB --> M
+    M --> T
+    T --> REL
+
+    C1 -.staging candidate commit.-> NOTE1[Image built/deployed from C1]
+    T -.points to.-> M
+```
+
+Result: the release tag points at the release PR merge commit, one commit on
+top of the commit that initiated the release PR. The tagged tree contains the
+version bump files, but the tag is not on the already-staged commit.
+
+### This repository's workflow
+
+```mermaid
+flowchart LR
+    C0[Previous release tag]
+    C1[Feature/fix commit\ninitiates next release PR]
+    RPB[Release Please branch\nbump commit:\nCHANGELOG + manifest + version.txt]
+    M[Release PR merge commit]
+    PUB[release-please.yaml\npublish-release job]
+    T([Release tag vX.Y.Z\ncreated at C1])
+    REL[GitHub release]
+    PROD[retag-and-deploy-prod.yaml\nretag/deploy same image]
+
+    C0 --> C1
+    C1 --> RPB
+    C1 --> M
+    RPB --> M
+    M --> PUB
+    PUB -->|target = first parent of M| T
+    T --> REL
+    T --> PROD
+
+    C1 -.staging candidate commit.-> NOTE1[Image built/deployed from C1]
+    T -.points to same commit as staging.-> C1
+```
+
+Result: Release Please still prepares the release PR, but this repository's
+publish job creates the release tag at the merge commit's first parent: the
+same commit that initiated the release PR and whose image was already deployed
+to staging.
+
 ## Detailed view
 
 The diagrams below keep two levels of grouping:
