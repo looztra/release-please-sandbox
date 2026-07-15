@@ -25,6 +25,8 @@ jobs:
     permissions:
       contents: read
       pull-requests: read
+    outputs:
+      is-release-please-merge: ${{ steps.detect.outputs.is-release-please-merge }}
 
     steps:
       - name: Checkout current branch
@@ -34,6 +36,7 @@ jobs:
           persist-credentials: false
 
       - name: Detect release-please merge commit
+        id: detect
         uses: ./.github/actions/detect-release-please-merge
 
       - uses: jdx/mise-action@e6a8b3978addb5a52f2b4cd9d91eafa7f0ab959d # v4.2.0
@@ -68,3 +71,4 @@ jobs:
         with:
           commit-sha: ${{ github.sha }}
           commit-message: ${{ github.event.head_commit.message }}
+          push-image: ${{ needs.pre-commit.outputs.is-release-please-merge != 'true' }}
