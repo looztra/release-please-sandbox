@@ -48,3 +48,23 @@ jobs:
           echo "::group::Run pre-commit checks"
           mise run precommit:run
           echo "::endgroup::"
+
+  fake-build:
+    name: Fake app + docker build
+    needs: pre-commit
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout current branch
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Fake app + docker build
+        uses: ./.github/actions/fake-build
+        with:
+          commit-sha: ${{ github.sha }}
+          commit-message: ${{ github.event.head_commit.message }}

@@ -1,0 +1,65 @@
+---
+name: Fake build
+description: >-
+  Simulates building the app and its Docker image for the current commit by
+  reporting the built commit and fake image reference to the step summary.
+  No real app is built and no real image is built or pushed in this sandbox.
+  The image tag follows the same 'sha-<commit-sha>' convention used by the
+  fake-deploy action, so the tag reported here is the one deploy-stg later
+  fake-deploys.
+
+inputs:
+  commit-sha:
+    description: The commit the fake build corresponds to.
+    required: true
+  commit-message:
+    description: >-
+      Message of the built commit; when provided, its first line is added to
+      the step summary.
+    required: false
+    default: ''
+
+runs:
+  using: composite
+  steps:
+    - name: Fake app build
+      shell: bash
+      env:
+        COMMIT_SHA: ${{ inputs.commit-sha }}
+      run: |
+        echo "::group::Fake app build"
+        echo "Building app for commit ${COMMIT_SHA}..."
+        echo "App build complete (no real artifact produced in this sandbox)."
+        echo "::endgroup::"
+
+    - name: Fake docker build
+      shell: bash
+      env:
+        COMMIT_SHA: ${{ inputs.commit-sha }}
+        COMMIT_MESSAGE: ${{ inputs.commit-message }}
+        FAKE_IMAGE: ghcr.io/${{ github.repository }}
+      run: |
+        IMAGE_TAG="sha-${COMMIT_SHA}"
+        FAKE_IMAGE_REF="${FAKE_IMAGE}:${IMAGE_TAG}"
+
+        echo "::group::Fake docker build"
+        echo "Building docker image ${FAKE_IMAGE_REF}..."
+        echo "Docker build complete (no real image built or pushed in this sandbox)."
+        echo "::endgroup::"
+
+        {
+          echo "## 🛠️ Fake app + docker build"
+          echo ""
+          echo "| What | Value |"
+          echo "| ---- | ----- |"
+          echo "| Commit | \`${COMMIT_SHA}\` |"
+          if [[ -n "${COMMIT_MESSAGE}" ]]; then
+            echo "| Commit message | ${COMMIT_MESSAGE%%$'\n'*} |"
+          fi
+          echo "| Fake image built | \`${FAKE_IMAGE_REF}\` |"
+          echo ""
+          echo "> No real app or Docker image is built in this sandbox: this"
+          echo "> simulates building and tagging the image for this exact"
+          echo "> commit, using the same \`sha-<commit-sha>\` tag convention"
+          echo "> that \`deploy-stg\` later fake-deploys."
+        } >> "$GITHUB_STEP_SUMMARY"
