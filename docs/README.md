@@ -3,6 +3,9 @@
 Study of the release-please workflow and how to align GitHub releases and tags
 with the commit that was deployed to staging.
 
+- [Functional workflows](functional-workflows.md): mermaid diagrams of the
+  three situations the CI handles — a normal push, a push that becomes a
+  release candidate, and a release PR merge that publishes a release.
 - [Release-please default behavior](release-please-default-behavior.md):
   how release-please works out of the box, and which commit the GitHub release
   and tag point to (verified on the `v0.1.0` release of this repository).
