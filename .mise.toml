@@ -4,7 +4,7 @@ actionlint = "1.7"
 shellcheck = "0.11"
 shfmt = "3"
 taplo = "0.10"
-uv = "0.11.30"
+uv = "0.11.31"
 zizmor = "1.27.0"
 
 [settings]
